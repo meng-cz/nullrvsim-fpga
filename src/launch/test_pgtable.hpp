@@ -59,11 +59,11 @@ bool test_pgtable() {
 
     TgtMemSetList stlist1;
 
-    PhysPageAllocatorV2 *ppman = new PhysPageAllocatorV2(0, 1<<30, &stlist1);
+    PhysPageAllocatorV2 *ppman = new PhysPageAllocatorV2(0, 1<<30);
 
     TgtMemSetList stlist2;
 
-    ThreadPageTableV2 * pgtable = new ThreadPageTableV2(ppman, &stlist2);
+    ThreadPageTableV2 * pgtable = new ThreadPageTableV2(PTType::SV39, ppman, &stlist2);
     pgtable->init_brk(0x10000UL);
     assert(pgtable->alloc_brk(0x12000UL, &stlist2) == 0x12000UL);
 

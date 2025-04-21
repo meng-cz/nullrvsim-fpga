@@ -29,7 +29,7 @@ SMPSystemV2::SMPSystemV2(SimWorkload &workload, CPUGroupInterface *cpus, uint32_
 
     TgtMemSetList stlist;
 
-    ppman = new PhysPageAllocatorV2(0, memsz, &stlist);
+    ppman = new PhysPageAllocatorV2(0, memsz);
 
     uint64_t entry = 0, sp = 0;
     ThreadV2 *init_thread = new ThreadV2(workload, ppman, &entry, &sp, &stlist);

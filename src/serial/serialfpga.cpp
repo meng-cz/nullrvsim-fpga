@@ -71,7 +71,7 @@ SerialFPGAAdapter::~SerialFPGAAdapter() {
 void SerialFPGAAdapter::_read_serial(void * buf, uint64_t size) {
     int64_t sz = 0;
     while(sz < size) {
-        int64_t ret = read(fd, buf + sz, size - sz);
+        int64_t ret = read(fd, (uint8_t*)(buf) + sz, size - sz);
         simroot_assertf(ret >= 0, "Read Serial Failed: %ld", ret);
         sz += ret;
     }
@@ -187,7 +187,7 @@ void SerialFPGAAdapter::flush_tlb_asid(uint32_t cpu_id, AsidT asid) {
     _append_int(buf, cpu_id, 2);
     _append_int(buf, asid, 2);
     int8_t value = _perform_op(SEROP_FTLB2, buf, ret);
-    simroot_assertf(SEROP_FTLB2 == value, "Operation FlushTLB2 on Core %d (%ld) Failed: %d", cpu_id, asid, value);
+    simroot_assertf(SEROP_FTLB2 == value, "Operation FlushTLB2 on Core %d (%d) Failed: %d", cpu_id, asid, value);
 }
 
 void SerialFPGAAdapter::flush_tlb_vpgidx(uint32_t cpu_id, VirtAddrT vaddr, AsidT asid) {
@@ -196,7 +196,7 @@ void SerialFPGAAdapter::flush_tlb_vpgidx(uint32_t cpu_id, VirtAddrT vaddr, AsidT
     _append_int(buf, asid, 2);
     _append_int(buf, vaddr >> PAGE_ADDR_OFFSET, 5);
     int8_t value = _perform_op(SEROP_FTLB3, buf, ret);
-    simroot_assertf(SEROP_FTLB3 == value, "Operation FlushTLB3 on Core %d (%ld, 0x%lx) Failed: %d", cpu_id, asid, vaddr >> PAGE_ADDR_OFFSET, value);
+    simroot_assertf(SEROP_FTLB3 == value, "Operation FlushTLB3 on Core %d (%d, 0x%lx) Failed: %d", cpu_id, asid, vaddr >> PAGE_ADDR_OFFSET, value);
 }
 
 RawDataT SerialFPGAAdapter::regacc_read(uint32_t cpu_id, RVRegIndexT vreg) {
@@ -214,7 +214,7 @@ void SerialFPGAAdapter::regacc_write(uint32_t cpu_id, RVRegIndexT vreg, RawDataT
     _append_int(buf, vreg, 2);
     _append_int(buf, data, 8);
     int8_t value = _perform_op(SEROP_REGWT, buf, ret);
-    simroot_assertf(SEROP_REGWT == value, "Operation RegWrite on Core %d (%ld, 0x%lx) Failed: %d", cpu_id, vreg, data, value);
+    simroot_assertf(SEROP_REGWT == value, "Operation RegWrite on Core %d (%d, 0x%lx) Failed: %d", cpu_id, vreg, data, value);
 }
 
 RawDataT SerialFPGAAdapter::pxymem_read(uint32_t cpu_id, PhysAddrT paddr) {

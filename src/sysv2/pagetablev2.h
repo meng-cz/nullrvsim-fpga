@@ -18,23 +18,23 @@
  * | ---------- Load from ELF ----------- | - alloc by brk ->  <- alloc by mmap - |           |
 */
 
-#define MIN_VADDR (0x100000000000UL)
-#define MAX_MMAP_VADDR (0xb00000000000UL)
-#define MAX_VADDR (0xc00000000000UL)
+#define MIN_VADDR (0x0000000000UL)
+#define MAX_MMAP_VADDR (0x7000000000UL)
+#define MAX_VADDR (0x7f00000000UL)
 
 /**
- * RV64 SV48 4KB
+ * RV64 4KB
  */
 class ThreadPageTableV2 {
 
 public:
 
-    ThreadPageTableV2(PhysPageAllocatorV2 *ppman, TgtMemSetList *stlist);
+    ThreadPageTableV2(PTType pt_type, PhysPageAllocatorV2 *ppman, TgtMemSetList *stlist);
     ThreadPageTableV2(ThreadPageTableV2 *parent, TgtMemSetList *stlist);
     ~ThreadPageTableV2();
 
-    PTET pt_get(VPageIndexT vpg, PhysAddrT *tgtaddr) { return pt.pt_get(vpg, tgtaddr); }
-    PageIndexT get_page_table_base() { return pt.get_page_table_base(); }
+    PTET pt_get(VPageIndexT vpg, PhysAddrT *tgtaddr) { return pt->pt_get(vpg, tgtaddr); }
+    PageIndexT get_page_table_base() { return pt->get_page_table_base(); }
 
     VirtAddrT alloc_mmap_fixed(VirtAddrT addr, uint64_t size, PageFlagT flag, FileDescriptor* fd, uint64_t offset, string info, TgtMemSetList *stlist);
     VirtAddrT alloc_mmap(uint64_t size, PageFlagT flag, FileDescriptor* fd, uint64_t offset, string info, TgtMemSetList *stlist);
@@ -55,13 +55,13 @@ public:
 
     // uint32_t ref_cnt = 0;
 
-    void debug_print_pgtable();
+    void debug_print_pgtable() { pt->debug_print_pgtable(); };
 
 protected:
 
     PhysPageAllocatorV2 *ppman;
 
-    SV48PageTable pt;
+    unique_ptr<PageTable4K> pt;
 
     typedef struct {
         VPageIndexT     vpindex;

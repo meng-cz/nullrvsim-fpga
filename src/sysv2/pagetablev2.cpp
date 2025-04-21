@@ -5,11 +5,12 @@
 
 #include <sys/mman.h>
 
-ThreadPageTableV2::ThreadPageTableV2(PhysPageAllocatorV2 *ppman, TgtMemSetList *stlist) : pt(ppman, stlist) {
 
+ThreadPageTableV2::ThreadPageTableV2(PTType pt_type, PhysPageAllocatorV2 *ppman, TgtMemSetList *stlist) {
+    
     this->ppman = ppman;
 
-    
+    pt = make_unique<PageTable4K>(pt_type, ppman,stlist);
 }
 
 ThreadPageTableV2::~ThreadPageTableV2() {
@@ -20,7 +21,7 @@ ThreadPageTableV2::~ThreadPageTableV2() {
     }
 }
 
-ThreadPageTableV2::ThreadPageTableV2(ThreadPageTableV2 *parent, TgtMemSetList *stlist) : pt(parent->ppman, stlist) {
+ThreadPageTableV2::ThreadPageTableV2(ThreadPageTableV2 *parent, TgtMemSetList *stlist) {
     
     this->ppman = parent->ppman;
 
@@ -32,90 +33,7 @@ ThreadPageTableV2::ThreadPageTableV2(ThreadPageTableV2 *parent, TgtMemSetList *s
     }
 
     // fork entire page table
-    PageIndexT ppn = pt.ptroot->target_ppn;
-    vector<RawDataT> p3_topush;
-    p3_topush.assign(PAGE_LEN_BYTE/8, 0);
-
-    for(uint64_t i2 = 0; i2 < PAGE_LEN_BYTE/8; i2++) {
-        SV48PageTable::PAGE2 * parent_p2 = parent->pt.ptroot->content[i2];
-        if(!parent_p2) continue;
-
-        SV48PageTable::PAGE2 * p2 = new SV48PageTable::PAGE2;
-        p2->vpn = (i2 << 27);
-        p2->target_ppn = ppman->alloc(stlist);
-        p2->vldcnt = 0;
-        p2->content.assign(PAGE_LEN_BYTE/8, nullptr);
-        pt.ptroot->content[i2] = p2;
-        pt.ptroot->vldcnt ++;
-        p3_topush[i2] = (p2->target_ppn << 10) + PTE_V;
-
-        vector<RawDataT> p2_topush;
-        p2_topush.assign(PAGE_LEN_BYTE/8, 0);
-
-        for(uint64_t i1 = 0; i1 < PAGE_LEN_BYTE/8; i1++) {
-            SV48PageTable::PAGE1 * parent_p1 = parent_p2->content[i1];
-            if(!parent_p1) continue;
-
-            SV48PageTable::PAGE1 * p1 = new SV48PageTable::PAGE1;
-            p1->vpn = (i2 << 27) + (i1 << 18);
-            p1->target_ppn = ppman->alloc(stlist);
-            p1->vldcnt = 0;
-            p1->content.assign(PAGE_LEN_BYTE/8, nullptr);
-            p2->content[i1] = p1;
-            p2->vldcnt++;
-            p2_topush[i1] = (p1->target_ppn << 10) + PTE_V;
-
-            vector<RawDataT> p1_topush;
-            p1_topush.assign(PAGE_LEN_BYTE/8, 0);
-
-            for(uint64_t i0 = 0; i0 < PAGE_LEN_BYTE/8; i0++) {
-                SV48PageTable::PAGE0 * parent_p0 = parent_p1->content[i0];
-                if(!parent_p0) continue;
-    
-                SV48PageTable::PAGE0 * p0 = new SV48PageTable::PAGE0;
-                p0->vpn = (i2 << 27) + (i1 << 18) + (i0 << 9);
-                p0->target_ppn = ppman->alloc(stlist);
-                p0->vldcnt = 0;
-                p0->content.assign(PAGE_LEN_BYTE/8, 0);
-                p1->content[i0] = p0;
-                p1->vldcnt++;
-                p1_topush[i0] = (p0->target_ppn << 10) + PTE_V;
-    
-                for(uint64_t i = 0; i < PAGE_LEN_BYTE/8; i++) {
-                    PTET &parent_pte = parent_p0->content[i];
-                    if(!(parent_pte & PTE_V)) continue;
-
-                    ppman->reuse(parent_pte >> 10);
-
-                    // Set COW in both parent table and child table
-                    if(parent_pte & PTE_W) {
-                        VPageIndexT vpn = p0->vpn + i;
-                        bool shared = false;
-                        for(auto &vseg : shared_interval) {
-                            if(vpn >= vseg.first && vpn < vseg.second) {
-                                shared = true;
-                                break;
-                            }
-                        }
-                        if(!shared) {
-                            parent_pte &= (~PTE_W);
-                            parent_pte |= PTE_COW;
-                            stlist->emplace_back(TgtMemSet64{.base = (parent_p0->target_ppn * PAGE_LEN_BYTE) + (i * 8), .dwords = 1, .value = parent_pte});
-                        }
-                    }
-                }
-
-                p0->content = parent_p0->content;
-
-                stlist->emplace_back(TgtMemSet64{.base = (p0->target_ppn * PAGE_LEN_BYTE), .dwords = PAGE_LEN_BYTE/8, .value = 0, .multivalue = p0->content});
-            }
-
-            stlist->emplace_back(TgtMemSet64{.base = (p1->target_ppn * PAGE_LEN_BYTE), .dwords = PAGE_LEN_BYTE/8, .value = 0, .multivalue = p1_topush});
-        }
-
-        stlist->emplace_back(TgtMemSet64{.base = (p2->target_ppn * PAGE_LEN_BYTE), .dwords = PAGE_LEN_BYTE/8, .value = 0, .multivalue = p2_topush});
-    }
-    stlist->emplace_back(TgtMemSet64{.base = (ppn * PAGE_LEN_BYTE), .dwords = PAGE_LEN_BYTE/8, .value = 0, .multivalue = p3_topush});
+    pt = make_unique<PageTable4K>(parent->pt.get(), shared_interval,stlist);
 
     // Copy mmap segments
     this->mmap_segments = parent->mmap_segments;
@@ -169,8 +87,8 @@ VirtAddrT ThreadPageTableV2::alloc_mmap_fixed(VirtAddrT addr, uint64_t size, Pag
         simroot_assert(fd == nullptr);
         // Stack should be immediatly allocated
         for(VPageIndexT vpn = vpi; vpn < vpi2; vpn++) {
-            PageIndexT ppn = ppman->alloc(stlist);
-            pt.pt_insert(vpn, (ppn << 10) + pte_flgs, stlist);
+            PageIndexT ppn = ppman->alloc();
+            pt->pt_insert(vpn, (ppn << 10) + pte_flgs, stlist);
         }
     }
     else if(fd && (flag & PGFLAG_SHARE)) {
@@ -179,11 +97,11 @@ VirtAddrT ThreadPageTableV2::alloc_mmap_fixed(VirtAddrT addr, uint64_t size, Pag
             VPageIndexT vpn_in_file = (vpn - vpi) + offset / PAGE_LEN_BYTE;
             auto iter = fd->file_buffers.find(vpn_in_file);
             if(iter == fd->file_buffers.end()) {
-                pt.pt_insert(vpn, PTE_COW | PTE_NALLOC | PTE_V, stlist);
+                pt->pt_insert(vpn, PTE_COW | PTE_NALLOC | PTE_V, stlist);
             } else {
                 PageIndexT ppn = iter->second;
                 ppman->reuse(ppn);
-                pt.pt_insert(vpn, (ppn << 10) | pte_flgs, stlist);
+                pt->pt_insert(vpn, (ppn << 10) | pte_flgs, stlist);
             }
         }
         fd->ref_cnt++;
@@ -191,14 +109,14 @@ VirtAddrT ThreadPageTableV2::alloc_mmap_fixed(VirtAddrT addr, uint64_t size, Pag
     else if(fd) {
         // Private file mapping
         for(VPageIndexT vpn = vpi; vpn < vpi2; vpn++) {
-            pt.pt_insert(vpn, PTE_COW | PTE_NALLOC | PTE_V, stlist);
+            pt->pt_insert(vpn, PTE_COW | PTE_NALLOC | PTE_V, stlist);
         }
         fd->ref_cnt++;
     } else {
         // ANON mapping
         simroot_assert(flag & PGFLAG_ANON);
         for(VPageIndexT vpn = vpi; vpn < vpi2; vpn++) {
-            pt.pt_insert(vpn, PTE_COW | PTE_NALLOC | PTE_V, stlist);
+            pt->pt_insert(vpn, PTE_COW | PTE_NALLOC | PTE_V, stlist);
         }
     }
 
@@ -281,8 +199,8 @@ void ThreadPageTableV2::free_mmap(VirtAddrT addr, uint64_t size, TgtMemSetList *
     for(VPageIndexT i = vpi; i < vpi2; i++) {
         PTET pte = pt_get(i, nullptr);
         if(pte & PTE_V) {
-            if(!(pte & PTE_NALLOC)) ppman->free(pte >> 10, stlist);
-            pt.pt_erase(i, stlist);
+            if(!(pte & PTE_NALLOC)) ppman->free(pte >> 10);
+            pt->pt_erase(i, stlist);
         }
     }
 }
@@ -392,10 +310,10 @@ void ThreadPageTableV2::apply_cow(VirtAddrT addr, TgtMemSetList *stlist, vector<
                 VPageIndexT vpn_in_file = (vpn - vseg->vpindex) + vseg->offset / PAGE_LEN_BYTE;
                 auto iter = vseg->fd->file_buffers.find(vpn_in_file);
                 if(iter == vseg->fd->file_buffers.end()) {
-                    PageIndexT ppn = ppman->alloc(stlist);
+                    PageIndexT ppn = ppman->alloc();
                     vseg->fd->file_buffers.emplace(vpn_in_file, ppn);
                     ppman->reuse(ppn);
-                    pt.pt_update(vpn, (ppn << 10) | pte_flgs, stlist);
+                    pt->pt_update(vpn, (ppn << 10) | pte_flgs, stlist);
                     stlist->emplace_back(TgtMemSet64{
                         .base = (ppn * PAGE_LEN_BYTE),
                         .dwords = PAGE_LEN_BYTE/8,
@@ -414,13 +332,13 @@ void ThreadPageTableV2::apply_cow(VirtAddrT addr, TgtMemSetList *stlist, vector<
                     // Other thread has loaded this shared page
                     PageIndexT ppn = iter->second;
                     ppman->reuse(ppn);
-                    pt.pt_update(vpn, (ppn << 10) | pte_flgs, stlist);
+                    pt->pt_update(vpn, (ppn << 10) | pte_flgs, stlist);
                     return ;
                 }
             } else {
                 // loaded file to local mapping
-                PageIndexT ppn = ppman->alloc(stlist);
-                pt.pt_update(vpn, (ppn << 10) | pte_flgs, stlist);
+                PageIndexT ppn = ppman->alloc();
+                pt->pt_update(vpn, (ppn << 10) | pte_flgs, stlist);
                 stlist->emplace_back(TgtMemSet64{
                     .base = (ppn * PAGE_LEN_BYTE),
                     .dwords = PAGE_LEN_BYTE/8,
@@ -438,8 +356,8 @@ void ThreadPageTableV2::apply_cow(VirtAddrT addr, TgtMemSetList *stlist, vector<
             }
         } else {
             // Zero-filled
-            PageIndexT ppn = ppman->alloc(stlist);
-            pt.pt_update(vpn, (ppn << 10) | pte_flgs, stlist);
+            PageIndexT ppn = ppman->alloc();
+            pt->pt_update(vpn, (ppn << 10) | pte_flgs, stlist);
             stlist->emplace_back(TgtMemSet64{
                 .base = (ppn * PAGE_LEN_BYTE),
                 .dwords = PAGE_LEN_BYTE/8,
@@ -453,12 +371,12 @@ void ThreadPageTableV2::apply_cow(VirtAddrT addr, TgtMemSetList *stlist, vector<
         uint32_t newpteflg = ((pte & 0xff) | PTE_W);
         if(!ppman->is_shared(ppn)) {
             PTET newpte = (((pte >> 10) << 10) | newpteflg);
-            pt.pt_update(vpn, newpte, stlist);
+            pt->pt_update(vpn, newpte, stlist);
         } else {
-            PageIndexT newppn = ppman->alloc(stlist);
-            ppman->free(ppn, stlist);
+            PageIndexT newppn = ppman->alloc();
+            ppman->free(ppn);
             PTET newpte = ((newppn << 10) | newpteflg);
-            pt.pt_update(vpn, newpte, stlist);
+            pt->pt_update(vpn, newpte, stlist);
             cplist->emplace_back(TgtPgCpy{
                 .src = ppn,
                 .dst = newppn
@@ -483,7 +401,7 @@ void ThreadPageTableV2::mprotect(VirtAddrT addr, uint64_t size, uint32_t prot_fl
 
     // Update page table
     for(VPageIndexT vpn = vpi; vpn < vpi + vpcnt; vpn++) {
-        PTET pte = pt.pt_get(vpn, nullptr);
+        PTET pte = pt->pt_get(vpn, nullptr);
         if((pte & PTE_V) && !(pte & PTE_NALLOC)) {
             if(pte & PTE_COW) {
                 pte &= (~rwxmask);
@@ -491,7 +409,7 @@ void ThreadPageTableV2::mprotect(VirtAddrT addr, uint64_t size, uint32_t prot_fl
                 if(!(pte_flgs & PTE_W)) {
                     pte &= (~PTE_COW);
                 }
-                pt.pt_update(vpn, pte, stlist);
+                pt->pt_update(vpn, pte, stlist);
             } else if((pte & rwxmask) != pte_flgs) {
                 pte &= (~rwxmask);
                 if(!(pte & PTE_W) && (pte_flgs & PTE_W) && ppman->is_shared(pte >> 10)) {
@@ -499,7 +417,7 @@ void ThreadPageTableV2::mprotect(VirtAddrT addr, uint64_t size, uint32_t prot_fl
                 } else {
                     pte |= pte_flgs;
                 }
-                pt.pt_update(vpn, pte, stlist);
+                pt->pt_update(vpn, pte, stlist);
             }
         }
     }
@@ -561,8 +479,8 @@ VirtAddrT ThreadPageTableV2::alloc_brk(VirtAddrT brk, TgtMemSetList *stlist) {
         VPageIndexT vpindex = CEIL_DIV(brk_va, PAGE_LEN_BYTE);
         uint64_t vpcnt = CEIL_DIV(brk, PAGE_LEN_BYTE) - vpindex;
         for(VPageIndexT vpn = vpindex; vpn < vpindex + vpcnt; vpn++) {
-            PageIndexT ppn = ppman->alloc(stlist);
-            pt.pt_insert(vpn, (ppn << 10) | (PTE_V | PTE_W | PTE_R), stlist);
+            PageIndexT ppn = ppman->alloc();
+            pt->pt_insert(vpn, (ppn << 10) | (PTE_V | PTE_W | PTE_R), stlist);
         }
         brk_va = brk;
         ret = brk_va;
@@ -579,7 +497,7 @@ VirtAddrT ThreadPageTableV2::alloc_brk(VirtAddrT brk, TgtMemSetList *stlist) {
 //     uint64_t vpcnt = (ALIGN(size, PAGE_LEN_BYTE) >> PAGE_ADDR_OFFSET);
 //     for(VPageIndexT vpn = vpindex; vpn < vpindex + vpcnt; vpn++) {
 //         PageIndexT ppn = ppman->alloc(stlist);
-//         pt.pt_insert(vpn, (ppn << 10) | (PTE_V | PTE_W | PTE_R | PTE_X), stlist);
+//         pt->pt_insert(vpn, (ppn << 10) | (PTE_V | PTE_W | PTE_R | PTE_X), stlist);
 //     }
 //     dyn_brk_va += size;
 //     return ret;
@@ -601,8 +519,8 @@ void ThreadPageTableV2::init_elf_seg(VirtAddrT addr, uint64_t size, PageFlagT fl
 
     for(uint64_t i = 0; i < vpcnt; i++) {
 
-        PageIndexT ppn = ppman->alloc(stlist);
-        pt.pt_insert(vpi + i, (ppn << 10) + pte_flgs, stlist);
+        PageIndexT ppn = ppman->alloc();
+        pt->pt_insert(vpi + i, (ppn << 10) + pte_flgs, stlist);
 
         stlist->emplace_back(TgtMemSet64{
             .base = ppn * PAGE_LEN_BYTE,
@@ -628,31 +546,4 @@ void ThreadPageTableV2::init_elf_seg(VirtAddrT addr, uint64_t size, PageFlagT fl
     }
 }
 
-void ThreadPageTableV2::debug_print_pgtable() {
-    printf("Page Table Base PPN: 0x%lx\n", pt.get_page_table_base() >> PAGE_ADDR_OFFSET);
-    for(auto p2 : pt.ptroot->content) {
-        if(!p2) continue;
-        printf("  Enter L2 Page: 0x%lx\n", p2->target_ppn);
-        for(auto p1 : p2->content) {
-            if(!p1) continue;
-            printf("    Enter L1 Page: 0x%lx\n", p1->target_ppn);
-            for(auto p0 : p1->content) {
-                if(!p0) continue;
-                printf("      Enter L0 Page: 0x%lx\n", p0->target_ppn);
-                for(uint64_t i = 0; i < PAGE_LEN_BYTE/8; i++) {
-                    PTET pte = p0->content[i];
-                    if(!(pte & PTE_V)) continue;
-                    VPageIndexT vpn = p0->vpn + (i);
-                    PageIndexT ppn = (pte >> 10);
-                    printf("        VP: 0x%lx -> PP: 0x%lx", vpn, ppn);
-                    if(pte & PTE_COW) printf(", COW");
-                    if(pte & PTE_NALLOC) printf(", NALLOC");
-                    if(pte & PTE_R) printf(", R");
-                    if(pte & PTE_W) printf(", W");
-                    if(pte & PTE_X) printf(", X");
-                    printf("\n");
-                }
-            }
-        }
-    }
-}
+

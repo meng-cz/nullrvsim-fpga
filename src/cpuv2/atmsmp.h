@@ -60,6 +60,8 @@ private:
     void _on_cur_simcore(uint32_t id);
     bool _page_trans_and_check(uint32_t id, VirtAddrT vaddr, uint32_t flag, PhysAddrT *paddr);
 
+    int32_t is_sv48 = 0;
+
 typedef struct {
     bool        ishalted;
     bool        interrupt;

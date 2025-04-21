@@ -36,6 +36,8 @@ AtomicSMPCores::AtomicSMPCores(uint32_t core_num, uint64_t mem_size) {
             ofiles[i] = make_shared<std::ofstream>(namebuf, std::ios::out);
         }
     }
+
+    is_sv48 = conf::get_int("root", "vm_is_sv48", 1);
 }
 
 AtomicSMPCores::~AtomicSMPCores() {
@@ -198,9 +200,13 @@ bool AtomicSMPCores::_page_trans_and_check(uint32_t id, VirtAddrT vaddr, uint32_
     if(iter != tlb.end()) {
         pte = iter->second;
     } else {
-        memcpy(&pte, main_mem.data() + ((core.pgtable & (~0xfffUL)) + 8 * ((vaddr >> 39) & 0x1ffUL)), 8);
-        if(!(pte & PTE_V)) return false;
-        memcpy(&pte, main_mem.data() + (((pte & (~0x3ffUL)) << 2) + 8 * ((vaddr >> 30) & 0x1ffUL)), 8);
+        if(is_sv48) {
+            memcpy(&pte, main_mem.data() + ((core.pgtable & (~0xfffUL)) + 8 * ((vaddr >> 39) & 0x1ffUL)), 8);
+            if(!(pte & PTE_V)) return false;
+            memcpy(&pte, main_mem.data() + (((pte & (~0x3ffUL)) << 2) + 8 * ((vaddr >> 30) & 0x1ffUL)), 8);
+        } else {
+            memcpy(&pte, main_mem.data() + ((core.pgtable & (~0xfffUL)) + 8 * ((vaddr >> 30) & 0x1ffUL)), 8);
+        }
         if(!(pte & PTE_V)) return false;
         memcpy(&pte, main_mem.data() + (((pte & (~0x3ffUL)) << 2) + 8 * ((vaddr >> 21) & 0x1ffUL)), 8);
         if(!(pte & PTE_V)) return false;

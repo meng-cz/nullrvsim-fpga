@@ -25,54 +25,62 @@ typedef struct {
     PageIndexT  dst;
 } TgtPgCpy;
 
-class SV48PageTable {
+typedef struct {
+    PageIndexT          target_ppn;
+    VPageIndexT         vpn;
+    uint32_t            vldcnt;
+    vector<PTET>        content;
+} PAGE0;
+
+typedef struct {
+    PageIndexT          target_ppn;
+    VPageIndexT         vpn;
+    uint32_t            vldcnt;
+    vector<PAGE0*>      content;
+} PAGE1;
+
+typedef struct {
+    PageIndexT          target_ppn;
+    VPageIndexT         vpn;
+    uint32_t            vldcnt;
+    vector<PAGE1*>      content;
+} PAGE2;
+
+typedef struct {
+    PageIndexT          target_ppn;
+    uint32_t            vldcnt;
+    vector<PAGE2*>      content;
+} PAGE3;
+
+typedef enum {
+    SV39 = 0,
+    SV48,
+} PTType;
+
+class PageTable4K {
 
 public:
+    PageTable4K(PTType type, PhysPageAllocatorV2 * ppman, TgtMemSetList *stlist);
+    PageTable4K(PageTable4K * forked_pt, vector<std::pair<VPageIndexT, VPageIndexT>> &shared_interval, TgtMemSetList *stlist);
+    ~PageTable4K();
 
-    SV48PageTable(PhysPageAllocatorV2 * ppman, TgtMemSetList *stlist);
-    ~SV48PageTable();
-    
     PTET pt_get(VPageIndexT vpg, PhysAddrT *tgtaddr);
     
     void pt_insert(VPageIndexT vpg, PTET pte, TgtMemSetList *stlist);
     void pt_update(VPageIndexT vpg, PTET pte, TgtMemSetList *stlist);
     void pt_erase(VPageIndexT vpg, TgtMemSetList *stlist);
 
-    PhysAddrT get_page_table_base() {
-        return (ptroot->target_ppn * PAGE_LEN_BYTE);
-    }
+    PhysAddrT get_page_table_base();
 
-    typedef struct {
-        PageIndexT          target_ppn;
-        VPageIndexT         vpn;
-        uint32_t            vldcnt;
-        vector<PTET>        content;
-    } PAGE0;
+    void debug_print_pgtable();
 
-    typedef struct {
-        PageIndexT          target_ppn;
-        VPageIndexT         vpn;
-        uint32_t            vldcnt;
-        vector<PAGE0*>      content;
-    } PAGE1;
-
-    typedef struct {
-        PageIndexT          target_ppn;
-        VPageIndexT         vpn;
-        uint32_t            vldcnt;
-        vector<PAGE1*>      content;
-    } PAGE2;
-
-    typedef struct {
-        PageIndexT          target_ppn;
-        uint32_t            vldcnt;
-        vector<PAGE2*>      content;
-    } PAGE3;
-
-    PAGE3 *ptroot = nullptr;
+private:
 
     PhysPageAllocatorV2 * ppman;
+    PTType type;
 
+    PAGE3 *root_sv48 = nullptr;
+    PAGE2 *root_sv39 = nullptr;
 };
 
 
@@ -80,20 +88,14 @@ class PhysPageAllocatorV2 {
 
 public:
 
-    PhysPageAllocatorV2(PhysAddrT start, uint64_t size, TgtMemSetList *stlist);
+    PhysPageAllocatorV2(PhysAddrT start, uint64_t size);
 
-    PageIndexT alloc(TgtMemSetList * stlist);
+    PageIndexT alloc();
     void reuse(PageIndexT ppindex);
     bool is_shared(PageIndexT ppindex);
-    bool free(PageIndexT ppindex, TgtMemSetList * stlist);
-
-    // PageIndexT get_system_page_table_base() {
-    //     return sys_pgtable->target_ppn;
-    // }
+    bool free(PageIndexT ppindex);
 
 protected:
-
-    // SV48PageTable::PAGE3 *sys_pgtable;
 
     std::list<PageIndexT> valid_pages;
     std::unordered_map<PageIndexT, uint32_t> alloced_pages;

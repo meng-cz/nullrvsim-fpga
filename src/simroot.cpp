@@ -54,6 +54,7 @@ void clear_sim_object() {
 }
 
 void print_statistic() {
+    dump_core();
     if(simroot_isinit) {
         std::string log_dir = conf::get_str("root", "out_dir", "out");
         std::ofstream statistic_log_file(log_dir + "/statistic.txt", std::ios::out);
