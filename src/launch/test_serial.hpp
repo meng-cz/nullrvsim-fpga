@@ -106,6 +106,23 @@ bool test_serial_3(string dev_path) {
     printf("Read 0x8001_0400\n");
     assert(0x4400UL == dev->pxymem_read(0, 0x80010400UL));
 
+    printf("Copy Page 0x8001_0 to 0x8004_0\n");
+    dev->pxymem_page_copy(0, 0x80040UL, 0x80010UL);
+    
+    printf("Read 0x8004_0000\n");
+    assert(0x4000UL == dev->pxymem_read(0, 0x80040000UL));
+
+    printf("Read 0x8004_0140\n");
+    assert(0x4140UL == dev->pxymem_read(0, 0x80040140UL));
+
+    printf("Read 0x8004_0880\n");
+    assert(0x4880UL == dev->pxymem_read(0, 0x80040880UL));
+
+    vector<uint64_t> pgrd;
+    pgrd.assign(512, 0);
+    printf("Read Page 0x8004_0\n");
+    dev->pxymem_page_read(0, 0x80040UL, pgrd.data());
+    for(uint64_t i = 0; i < 512; i++) assert(pgrd[i] == pg[i]);
     
     printf("Test 3 PASSED\n");
 

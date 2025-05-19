@@ -175,7 +175,7 @@ class NulCPUCtrl() extends Module {
 
     when(state === STATE_SEND_HEAD) {
         io.tx.valid := true.B 
-        io.tx.bits := Cat(0.U(3.W), opcode)
+        io.tx.bits := Cat(opoff, opcode)
         trans_pos := 0.U
         when(io.tx.ready) {
             when(opcode === SEROP_NEXT) {
@@ -522,7 +522,7 @@ class NulCPUCtrl() extends Module {
 
     val _pgdiv8_base_addr = Wire(Vec(5, UInt(8.W)))
     for(i <- 0 to 4) {
-        _pgdiv8_base_addr(i) := oparg(7+i)
+        _pgdiv8_base_addr(i) := oparg(2+i)
     }
     val pgdiv8_base_addr = Cat((0.U(12.W)), _pgdiv8_base_addr.asUInt(), opoff, (0.U(9.W)))
 
@@ -603,20 +603,18 @@ class NulCPUCtrl() extends Module {
         when(cnt(24)) { invoke_inst("h0332b423".U) } // sd x19, 40(x5)
         when(cnt(25)) { invoke_inst("h0342b823".U) } // sd x20, 48(x5)
         when(cnt(26)) { invoke_inst("h0352bc23".U) } // sd x21, 56(x5)
-        when(cnt(27)) {
+        when(cnt(27)) { invoke_inst("h04028293".U) } // addi x5, x5, 64
+        when(cnt(28)) { wait_inst() }
+        when(cnt(29)) {
             when(pgbuf_pop_pos === 448.U) {
-                cnt := (1.U << 31)
-            }.otherwise {
                 cnt := (cnt << 1)
+            }.otherwise {
+                cnt := (1.U << 10)
             }
             pgbuf_pop_pos := pgbuf_pop_pos + 64.U
         }
-        when(cnt(28)) { invoke_inst("h04028293".U) } // addi x5, x5, 64
-        when(cnt(29)) { wait_inst() }
-        when(cnt(30)) { cnt := (1.U << 10) }
-        when(cnt(31)) { wait_inst() }
-        recover_regs(32, 9)
-        when(cnt(41)) {
+        recover_regs(30, 9)
+        when(cnt(39)) {
             cnt := 1.U 
             state := STATE_SEND_HEAD
             pgbuf_pop_pos := 0.U 
