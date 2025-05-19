@@ -182,8 +182,8 @@ void ThreadV2::elf_exec(SimWorkload &param, VirtAddrT *out_entry, VirtAddrT *out
 
     // 清空线程页表
     PTType type = (conf::get_int("root", "vm_is_sv48", 1) ? (PTType::SV48) : (PTType::SV39));
-    printf("Init Thread Page Table with Config %s\n", (type == PTType::SV48)?"SV48":"SV39");
     this->pgtable = make_shared<ThreadPageTableV2>(type, ppman, stlist);
+    printf("Init Thread Page Table with Config %s at PhyscAddr 0x%lx\n", (type == PTType::SV48)?"SV48":"SV39", this->pgtable->get_page_table_base());
 
     // 加载elf文件
     ELFIO::elfio reader;

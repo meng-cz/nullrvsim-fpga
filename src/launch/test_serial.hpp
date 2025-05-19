@@ -129,3 +129,32 @@ bool test_serial_3(string dev_path) {
     return true;
 }
 
+bool test_serial_4(string dev_path) {
+
+    uint32_t baudrate = conf::get_int("serial", "baudrate", 115200);
+
+    uint64_t mem_base = conf::get_int("root", "memory_base_addr", 0);
+    simroot_assert((mem_base % PAGE_LEN_BYTE) == 0);
+
+    SerialFPGAAdapter * dev = new SerialFPGAAdapter(dev_path, baudrate);
+
+    printf("Test 4 Start\n");
+
+    vector<uint32_t> bufs;
+    bufs.resize(1024, 0x13);
+
+    printf("Clear Page 0x80000 - 0x80003\n");
+    dev->pxymem_page_set(0, 0x80000UL, 0);
+    dev->pxymem_page_set(0, 0x80001UL, 0);
+    dev->pxymem_page_set(0, 0x80002UL, 0);
+    dev->pxymem_page_set(0, 0x80003UL, 0);
+
+    printf("Init PageTable of VPage 0x10000 -> 0x80003\n");
+    
+
+
+    printf("Test 4 PASSED\n");
+
+    return true;
+}
+

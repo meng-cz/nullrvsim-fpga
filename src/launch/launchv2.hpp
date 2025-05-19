@@ -35,8 +35,7 @@ bool mpv2(std::vector<string> &argv) {
     uint64_t mem_size = conf::get_int("root", "memory_size_gb", 1);
     simroot_assert(mem_size > 0 && mem_size <= 256);
     mem_size = (mem_size << 30);
-    uint64_t mem_base = conf::get_int("root", "memory_base_addr", 0);
-    simroot_assert(mem_base > 0 && mem_base + mem_size <= 256);
+    uint64_t mem_base = conf::get_inthex("root", "memory_base_addr_hex", 0);
     simroot_assert((mem_base % PAGE_LEN_BYTE) == 0);
 
     shared_ptr<AtomicSMPCores> hardwares = make_shared<AtomicSMPCores>(cpu_num, mem_size);
@@ -78,8 +77,7 @@ bool mpser(string devpath, vector<string> &argv) {
     uint64_t mem_size = conf::get_int("root", "memory_size_gb", 1);
     simroot_assert(mem_size > 0 && mem_size <= 256);
     mem_size = (mem_size << 30);
-    uint64_t mem_base = conf::get_int("root", "memory_base_addr", 0);
-    simroot_assert(mem_base > 0 && mem_base + mem_size <= 256);
+    uint64_t mem_base = conf::get_inthex("root", "memory_base_addr_hex", 0);
     simroot_assert((mem_base % PAGE_LEN_BYTE) == 0);
     uint32_t baudrate = conf::get_int("serial", "baudrate", 115200);
 
