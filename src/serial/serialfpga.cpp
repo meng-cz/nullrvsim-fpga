@@ -137,10 +137,11 @@ const uint64_t SEROP_RET_BITS[SEROP_NUM] = {
 };
 
 int8_t SerialFPGAAdapter::_perform_op(int8_t op, BufT &data, BufT &retdata) {
-    simroot_assert(op < SEROP_NUM && op >= 0);
+    int8_t raw_op = (op & 0x1f);
+    simroot_assert(raw_op < SEROP_NUM && raw_op >= 0);
     _write_serial(&op, 1);
     _write_serial(data.data(), data.size());
-    retdata.resize(SEROP_RET_BITS[op] / 8);
+    retdata.resize(SEROP_RET_BITS[raw_op] / 8);
     int8_t ret = 0;
     _read_serial(&ret, 1);
     _read_serial(retdata.data(), retdata.size());
