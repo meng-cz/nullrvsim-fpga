@@ -30,6 +30,7 @@ class NulCPUCtrl() extends Module {
         val cpu     = new NulCPUBundle()
         val tx      = new UartIO()
         val rx      = Flipped(new UartIO())
+        val dgb_sta = Output(UInt(8.W))
     })
 
     io.rx.ready := true.B
@@ -102,6 +103,8 @@ class NulCPUCtrl() extends Module {
     val state = RegInit(0.U(5.W))
     val trans_bytes = RegInit(0.U(10.W))
     val trans_pos = RegInit(0.U(10.W))
+
+    io.dgb_sta := state 
 
     val opcode = RegInit(0.U(5.W))
     val opoff = RegInit(0.U(3.W))
@@ -394,6 +397,12 @@ class NulCPUCtrl() extends Module {
         recover_regs(9, 2)
         when(cnt(11)) { invoke_inst("h30200073".U) } // mret
         when(cnt(12)) {
+            io.cpu.inst64_flush := true.B 
+            when(io.cpu.priv === 0.U) {
+                cnt := (cnt << 1)
+            }
+        }
+        when(cnt(13)) {
             cnt := 1.U 
             state := STATE_SEND_HEAD
         }
@@ -628,8 +637,8 @@ class Tx(frequency: Int, baudRate: Int) extends Module {
         val channel = Flipped(new UartIO())
     })
 
-    // val BIT_CNT = ((frequency + baudRate / 2) / baudRate - 1).asUInt
-    val BIT_CNT = (frequency/baudRate - 1).asUInt
+    val BIT_CNT = ((frequency + baudRate / 2) / baudRate - 1).asUInt
+    // val BIT_CNT = (frequency/baudRate - 1).asUInt
 
     val shiftReg = RegInit(0x7ff.U)
     val cntReg = RegInit(0.U(20.W))
@@ -666,10 +675,10 @@ class Rx(frequency: Int, baudRate: Int) extends Module {
         val channel = new UartIO()
     })
 
-    // val BIT_CNT = ((frequency + baudRate / 2) / baudRate - 1).U
-    // val START_CNT = ((3 * frequency / 2 + baudRate / 2) / baudRate - 1).U
-    val BIT_CNT = (frequency/baudRate - 1).asUInt
-    val START_CNT = ((3 * frequency) / (2 * baudRate) - 1).U
+    val BIT_CNT = ((frequency + baudRate / 2) / baudRate - 1).U
+    val START_CNT = ((3 * frequency / 2 + baudRate / 2) / baudRate - 1).U
+    // val BIT_CNT = (frequency/baudRate - 1).asUInt
+    // val START_CNT = ((3 * frequency) / (2 * baudRate) - 1).U
 
     // Sync in the asynchronous RX data, reset to 1 to not start reading after a reset
     val rxReg = RegNext(RegNext(io.rxd, 1.U), 1.U)
@@ -708,33 +717,23 @@ class NulCPUCtrlWithUart(frequency: Int, baudRate: Int) extends Module {
         val cpu     = new NulCPUBundle()
         val txd     = Output(UInt(1.W))
         val rxd     = Input(UInt(1.W))
-        val dbg_rx_vld  = Output(Bool())
-        val dbg_tx_vld  = Output(Bool())
-        val dbg_rx_rdy  = Output(Bool())
-        val dbg_tx_rdy  = Output(Bool())
-        val dbg_rx_data = Output(UInt(8.W))
-        val dbg_tx_data = Output(UInt(8.W))
+        val dgb_sta = Output(UInt(5.W))
     })
 
     val ctrl = Module(new NulCPUCtrl())
     val tx = Module(new Tx(frequency, baudRate))
     val rx = Module(new Rx(frequency, baudRate))
 
+    io.dgb_sta := ctrl.io.dgb_sta
+
     io.cpu <> ctrl.io.cpu 
     io.txd := tx.io.txd 
     rx.io.rxd := io.rxd 
     ctrl.io.tx <> tx.io.channel
     ctrl.io.rx <> rx.io.channel
-
-    io.dbg_tx_vld := tx.io.channel.valid 
-    io.dbg_tx_data := tx.io.channel.bits
-    io.dbg_tx_rdy := tx.io.channel.ready
-    io.dbg_rx_vld := rx.io.channel.valid 
-    io.dbg_rx_data := rx.io.channel.bits
-    io.dbg_rx_rdy := rx.io.channel.ready
 }
 
 object NulCPUCtrlUartMain extends App {
     println("Generating the NulCPUCtrlUart hardware")
-    emitVerilog(new NulCPUCtrlWithUart(1152000, 115200), Array("--target-dir", "generated"))
+    emitVerilog(new NulCPUCtrlWithUart(125000000, 115200), Array("--target-dir", "generated"))
 }
