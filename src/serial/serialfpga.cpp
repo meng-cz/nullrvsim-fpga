@@ -234,7 +234,7 @@ void SerialFPGAAdapter::regacc_write(uint32_t cpu_id, RVRegIndexT vreg, RawDataT
 RawDataT SerialFPGAAdapter::pxymem_read(uint32_t cpu_id, PhysAddrT paddr) {
     vector<uint8_t> buf, ret;
     _append_int(buf, cpu_id, 2);
-    _append_int(buf, paddr, 8);
+    _append_int(buf, paddr, 6);
     int8_t value = _perform_op(SEROP_MEMRD, buf, ret);
     simroot_assertf(SEROP_MEMRD == value, "Operation RegRead on Core %d (0x%lx) Failed: %d", cpu_id, paddr, value);
     return _pop_int(ret, 8);
@@ -243,7 +243,7 @@ RawDataT SerialFPGAAdapter::pxymem_read(uint32_t cpu_id, PhysAddrT paddr) {
 void SerialFPGAAdapter::pxymem_write(uint32_t cpu_id, PhysAddrT paddr, RawDataT data) {
     vector<uint8_t> buf, ret;
     _append_int(buf, cpu_id, 2);
-    _append_int(buf, paddr, 8);
+    _append_int(buf, paddr, 6);
     _append_int(buf, data, 8);
     int8_t value = _perform_op(SEROP_MEMWT, buf, ret);
     simroot_assertf(SEROP_MEMWT == value, "Operation RegWrite on Core %d (0x%lx, 0x%lx) Failed: %d", cpu_id, paddr, data, value);
