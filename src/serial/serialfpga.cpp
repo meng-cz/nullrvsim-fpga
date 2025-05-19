@@ -1,6 +1,7 @@
 
 #include "serialfpga.h"
 #include "simroot.h"
+#include "configuration.h"
 
 #include <errno.h>
 #include <fcntl.h>
@@ -34,6 +35,8 @@ int32_t get_baudrate_const(int baudrate) {
 }
 
 SerialFPGAAdapter::SerialFPGAAdapter(string devfile, uint32_t baudrate) {
+
+    dbg = conf::get_int("serial", "debug_enable", 0);
 
     fd = open(devfile.c_str(), O_RDWR | O_NOCTTY | O_SYNC);
     simroot_assertf(fd > 0, "Open Serial Device %s Failed", devfile.c_str());
@@ -73,11 +76,21 @@ void SerialFPGAAdapter::_read_serial(void * buf, uint64_t size) {
     while(sz < size) {
         int64_t ret = read(fd, (uint8_t*)(buf) + sz, size - sz);
         simroot_assertf(ret >= 0, "Read Serial Failed: %ld", ret);
+        if(dbg) {
+            printf("Read Serial [%ld]:", ret);
+            for(uint64_t i = 0; i < ret; i++) printf(" %02x", ((uint8_t*)buf)[sz + i] & 0xff);
+            printf("\n");
+        }
         sz += ret;
     }
 }
 
 void SerialFPGAAdapter::_write_serial(void * buf, uint64_t size) {
+    if(dbg) {
+        printf("Write Serial [%ld]:", size);
+        for(uint64_t i = 0; i < size; i++) printf(" %02x", ((uint8_t*)buf)[i] & 0xff);
+        printf("\n");
+    }
     int64_t ret = write(fd, buf, size);
     simroot_assertf(ret == size, "Write Serial Failed: %ld", ret);
 }
@@ -104,7 +117,7 @@ int64_t SerialFPGAAdapter::_pop_int(BufT &buf, uint64_t bytes) {
 }
 
 const uint64_t SEROP_RET_BITS[SEROP_NUM] = {
-    16+8+64,
+    16+8+48+48,
     0,
     0,
     0,
@@ -116,7 +129,7 @@ const uint64_t SEROP_RET_BITS[SEROP_NUM] = {
     0,
     64,
     0,
-    4096*8,
+    512*8,
     0,
     0,
     0,

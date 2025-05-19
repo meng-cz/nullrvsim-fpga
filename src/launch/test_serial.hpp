@@ -9,12 +9,11 @@ bool test_serial_1(string dev_path) {
     uint32_t baudrate = conf::get_int("serial", "baudrate", 115200);
 
     uint64_t mem_base = conf::get_int("root", "memory_base_addr", 0);
-    simroot_assert(mem_base > 0 && mem_base <= 256);
     simroot_assert((mem_base % PAGE_LEN_BYTE) == 0);
 
     SerialFPGAAdapter * dev = new SerialFPGAAdapter(dev_path, baudrate);
 
-    printf("Test 1 Start");
+    printf("Test 1 Start\n");
 
     printf("Save Reg X5 as 0x1122334455667788\n");
     dev->regacc_write(0, 5, 0x1122334455667788UL);
@@ -41,7 +40,6 @@ bool test_serial_2(string dev_path) {
     uint32_t baudrate = conf::get_int("serial", "baudrate", 115200);
 
     uint64_t mem_base = conf::get_int("root", "memory_base_addr", 0);
-    simroot_assert(mem_base > 0 && mem_base <= 256);
     simroot_assert((mem_base % PAGE_LEN_BYTE) == 0);
 
     SerialFPGAAdapter * dev = new SerialFPGAAdapter(dev_path, baudrate);
@@ -86,7 +84,6 @@ bool test_serial_3(string dev_path) {
     uint32_t baudrate = conf::get_int("serial", "baudrate", 115200);
 
     uint64_t mem_base = conf::get_int("root", "memory_base_addr", 0);
-    simroot_assert(mem_base > 0 && mem_base <= 256);
     simroot_assert((mem_base % PAGE_LEN_BYTE) == 0);
 
     SerialFPGAAdapter * dev = new SerialFPGAAdapter(dev_path, baudrate);

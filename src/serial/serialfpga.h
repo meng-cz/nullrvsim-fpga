@@ -75,6 +75,7 @@ private:
 
     int64_t _pop_int(BufT &buf, uint64_t bytes);
 
+    int32_t dbg = 0;
 };
 
 
