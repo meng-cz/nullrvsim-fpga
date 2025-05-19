@@ -579,12 +579,12 @@ class NulCPUCtrl() extends Module {
         backup_regs(0, 9)
         when(cnt(9)) { write_reg(0, pgdiv8_base_addr) }
         when(cnt(10)) {
-            when(pgbuf_pop_pos >= pgbuf_push_pos + 64.U) {
+            when(pgbuf_push_pos >= pgbuf_pop_pos + 64.U) {
                 cnt := (cnt << 1)
             }
         }
         for(i <- 0 to 7) {
-            when(cnt(11+i)) { write_reg(1+i, pgbuf_div8((pgbuf_push_pos >> 3) + i.U)) }
+            when(cnt(11+i)) { write_reg(1+i, pgbuf_div8((pgbuf_pop_pos >> 3) + i.U)) }
         }
         when(cnt(19)) { invoke_inst("h0062b023".U) } // sd x6, 0(x5)
         when(cnt(20)) { invoke_inst("h0072b423".U) } // sd x7, 8(x5)
@@ -736,54 +736,5 @@ class NulCPUCtrlWithUart(frequency: Int, baudRate: Int) extends Module {
 
 object NulCPUCtrlUartMain extends App {
     println("Generating the NulCPUCtrlUart hardware")
-    emitVerilog(new NulCPUCtrlWithUart(125000000, 115200), Array("--target-dir", "generated"))
-}
-
-class NulCtrlTest() extends Module {
-    
-    val io = IO(new Bundle {
-        val txd     = Output(UInt(1.W))
-        val rxd     = Input(UInt(1.W))
-
-        val dbg_rx_vld  = Output(Bool())
-        val dbg_tx_vld  = Output(Bool())
-        val dbg_rx_rdy  = Output(Bool())
-        val dbg_tx_rdy  = Output(Bool())
-        val dbg_rx_data = Output(UInt(8.W))
-        val dbg_tx_data = Output(UInt(8.W))
-    })
-
-    val ctrl = Module(new NulCPUCtrlWithUart(125000000, 115200))
-
-    ctrl.io.rxd := io.rxd 
-    io.txd := ctrl.io.txd 
-
-    io.dbg_tx_vld := ctrl.io.dbg_tx_vld
-    io.dbg_tx_data := ctrl.io.dbg_tx_data
-    io.dbg_tx_rdy := ctrl.io.dbg_tx_rdy
-    io.dbg_rx_vld := ctrl.io.dbg_rx_vld
-    io.dbg_rx_data := ctrl.io.dbg_rx_data
-    io.dbg_rx_rdy := ctrl.io.dbg_rx_rdy
-
-    ctrl.io.cpu.priv := 3.U 
-    ctrl.io.cpu.regacc_busy := false.B 
-    ctrl.io.cpu.inst64_busy := false.B 
-    ctrl.io.cpu.inst64_ready := true.B 
-
-    val regs = RegInit(VecInit(Seq.fill(32)(0.U(64.W))))
-
-    ctrl.io.cpu.regacc_rdata := regs(ctrl.io.cpu.regacc_idx(4,0)) 
-
-    when(ctrl.io.cpu.regacc_wt && ctrl.io.cpu.regacc_idx(4,0) =/= 0.U) {
-        regs(ctrl.io.cpu.regacc_idx(4,0)) := ctrl.io.cpu.regacc_wdata
-    }
-
-    when(ctrl.io.cpu.inst64) {
-        regs(17) := Cat(0.U(32.W), ctrl.io.cpu.inst64_raw)
-    }
-}
-
-object NulCtrlTestMain extends App {
-    println("Generating the NulCtrlTest hardware")
-    emitVerilog(new NulCtrlTest(), Array("--target-dir", "generated"))
+    emitVerilog(new NulCPUCtrlWithUart(1152000, 115200), Array("--target-dir", "generated"))
 }
