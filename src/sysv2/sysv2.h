@@ -37,7 +37,7 @@ class SMPSystemV2 {
 
 public:
 
-    SMPSystemV2(SimWorkload &workload, CPUGroupInterface *cpus, uint32_t cpu_num, uint64_t memsz);
+    SMPSystemV2(SimWorkload &workload, CPUGroupInterface *cpus, uint32_t cpu_num, uint64_t membase, uint64_t memsz);
 
     void run_sim();
 

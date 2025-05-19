@@ -22,14 +22,14 @@
 #include <linux/limits.h>
 #include <linux/sched.h>
 
-SMPSystemV2::SMPSystemV2(SimWorkload &workload, CPUGroupInterface *cpus, uint32_t cpu_num, uint64_t memsz)
+SMPSystemV2::SMPSystemV2(SimWorkload &workload, CPUGroupInterface *cpus, uint32_t cpu_num, uint64_t membase, uint64_t memsz)
 : cpus(cpus), cpu_num(cpu_num) {
     
     running_threads.assign(cpu_num, nullptr);
 
     TgtMemSetList stlist;
 
-    ppman = new PhysPageAllocatorV2(0, memsz);
+    ppman = new PhysPageAllocatorV2(membase, memsz);
 
     uint64_t entry = 0, sp = 0;
     ThreadV2 *init_thread = new ThreadV2(workload, ppman, &entry, &sp, &stlist);
@@ -729,11 +729,11 @@ void SMPSystemV2::run_sim() {
     uint32_t cpu_id = 0;
     uint32_t cause = 0;
     RawDataT arg = 0;
+    VirtAddrT pc = 0;
 
 #define SYSCALL_CASE_V2(num, name) case num: nextpc = SYSCALL_FUNC_NAME_V2(num, name)(cpu_id, pc); break;
 
-    while(cpus->next(&cpu_id, &cause, &arg)) {
-        VirtAddrT pc = cpus->regacc_read(cpu_id, 0);
+    while(cpus->next(&cpu_id, &pc, &cause, &arg)) {
         RawDataT ecallid = cpus->regacc_read(cpu_id, ireg_index_of("a7"));
         VirtAddrT nextpc = 0;
         switch (cause)

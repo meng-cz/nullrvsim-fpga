@@ -26,7 +26,7 @@ public:
     virtual void set_mmu(uint32_t cpu_id, PhysAddrT pgtable, AsidT asid);
     virtual void redirect(uint32_t cpu_id, VirtAddrT addr);
 
-    virtual bool next(uint32_t *itr_cpu, uint32_t *itr_cause, RawDataT *itr_arg);
+    virtual bool next(uint32_t *itr_cpu, VirtAddrT *itr_pc, uint32_t *itr_cause, RawDataT *itr_arg);
 
     virtual void flush_tlb_all(uint32_t cpu_id);
     virtual void flush_tlb_asid(uint32_t cpu_id, AsidT asid);

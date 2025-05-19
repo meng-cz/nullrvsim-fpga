@@ -7,6 +7,7 @@
 
 #include "launch/launchv2.hpp"
 #include "launch/test_pgtable.hpp"
+#include "launch/test_serial.hpp"
 
 #define TEST(x) printf("Execute: %s\n", #x); if(!x) printf("Test %s failed\n", #x);
 
@@ -116,9 +117,31 @@ void execution() {
     PRINT_ARGS(W);
 
 
-    OPERATION(op, "mpv2", {
+    OPERATION(op, "sim", {
         ASSERT_MORE_ARGS(W, 1, "elf_path")
         TEST(mpv2(W));
+    });
+
+    OPERATION(op, "serial", {
+        ASSERT_MORE_ARGS(W, 1, "elf_path")
+        ASSERT_MORE_ARGS(S, 1, "dev_path")
+        TEST(mpser(S[0], W));
+    });
+
+
+    OPERATION(op, "test1", {
+        ASSERT_MORE_ARGS(S, 1, "dev_path")
+        TEST(test_serial_1(S[0]));
+    });
+
+    OPERATION(op, "test2", {
+        ASSERT_MORE_ARGS(S, 1, "dev_path")
+        TEST(test_serial_2(S[0]));
+    });
+
+    OPERATION(op, "test3", {
+        ASSERT_MORE_ARGS(S, 1, "dev_path")
+        TEST(test_serial_3(S[0]));
     });
 
 

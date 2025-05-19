@@ -117,12 +117,13 @@ void AtomicSMPCores::redirect(uint32_t cpu_id, VirtAddrT addr){
     cores[cpu_id].ishalted = false;
 }
 
-bool AtomicSMPCores::next(uint32_t *itr_cpu, uint32_t *itr_cause, RawDataT *itr_arg){
+bool AtomicSMPCores::next(uint32_t *itr_cpu, VirtAddrT *itr_pc, uint32_t *itr_cause, RawDataT *itr_arg){
 
     while (1) {
         for(uint32_t i = 0; i < cores.size(); i++) {
             if(cores[i].interrupt) {
                 *itr_cpu = i;
+                *itr_pc = cores[i].pc;
                 *itr_cause = cores[i].itr_cause;
                 *itr_arg = cores[i].itr_arg;
                 cores[i].interrupt = false;
@@ -161,7 +162,7 @@ void AtomicSMPCores::flush_tlb_vpgidx(uint32_t cpu_id, VirtAddrT vaddr, AsidT as
 }
 
 RawDataT AtomicSMPCores::regacc_read(uint32_t cpu_id, RVRegIndexT vreg) {
-    return (vreg?(cores[cpu_id].reg[vreg]):(cores[cpu_id].pc));
+    return (vreg?(cores[cpu_id].reg[vreg]):0);
 }
 void AtomicSMPCores::regacc_write(uint32_t cpu_id, RVRegIndexT vreg, RawDataT data) {
     if(vreg) cores[cpu_id].reg[vreg] = data;

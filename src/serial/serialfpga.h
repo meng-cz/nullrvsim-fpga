@@ -7,24 +7,26 @@
 
 using simcpu::CPUGroupInterface;
 
-#define SEROP_NEXT          (0)     //  OP[8]                               -> ACK[8] ID[16] CAUSE[8] ARG[64]
-#define SEROP_HALT          (1)     //  OP[8] ID[16]                        -> ACK[8]
-#define SEROP_ITR           (2)     //  OP[8] ID[16]                        -> ACK[8]
-#define SEROP_MMU           (3)     //  OP[8] ID[16] ASID[16] PT[40]        -> ACK[8]
-#define SEROP_REDIR         (4)     //  OP[8] ID[16] PC[48]                 -> ACK[8]
-#define SEROP_FTLB          (5)     //  OP[8] ID[16]                        -> ACK[8]
-#define SEROP_FTLB2         (6)     //  OP[8] ID[16] ASID[16]               -> ACK[8]
-#define SEROP_FTLB3         (7)     //  OP[8] ID[16] ASID[16] VPN[40]       -> ACK[8]
-#define SEROP_REGRD         (8)     //  OP[8] ID[16] REG[16]                -> ACK[8] DATA[64]
-#define SEROP_REGWT         (9)     //  OP[8] ID[16] REG[16] DATA[64]       -> ACK[8]
-#define SEROP_MEMRD         (10)    //  OP[8] ID[16] PA[48]                 -> ACK[8] DATA[64]
-#define SEROP_MEMWT         (11)    //  OP[8] ID[16] PA[48] DATA[64]        -> ACK[8]
-#define SEROP_PGRD          (12)    //  OP[8] ID[16] PPN[40]                -> ACK[8] DATA[4096B]
-#define SEROP_PGST          (13)    //  OP[8] ID[16] PPN[40] VALUE[64]      -> ACK[8]
-#define SEROP_PGWT          (14)    //  OP[8] ID[16] PPN[40] DATA[4096B]    -> ACK[8]
-#define SEROP_PGCP          (15)    //  OP[8] ID[16] DST[40] SRC[40]        -> ACK[8]
+#define SEROP_NEXT          (0)     //  OP[8]                               -> ACK[8] ID[16] CAUSE[8] PC[48] ARG[48]
+#define SEROP_HALT          (1)     //  OP[8]       ID[16]                  -> ACK[8]
+#define SEROP_ITR           (2)     //  OP[8]       ID[16]                  -> ACK[8]
+#define SEROP_MMU           (3)     //  OP[8]       ID[16] ASID[16] PT[40]  -> ACK[8]
+#define SEROP_REDIR         (4)     //  OP[8]       ID[16] PC[48]           -> ACK[8]
+#define SEROP_FTLB          (5)     //  OP[8]       ID[16]                  -> ACK[8]
+#define SEROP_FTLB2         (6)     //  OP[8]       ID[16] ASID[16]         -> ACK[8]
+#define SEROP_FTLB3         (7)     //  OP[8]       ID[16] ASID[16] VPN[40] -> ACK[8]
+#define SEROP_REGRD         (8)     //  OP[8]       ID[16] REG[16]          -> ACK[8] DATA[64]
+#define SEROP_REGWT         (9)     //  OP[8]       ID[16] REG[16] DATA[64] -> ACK[8]
+#define SEROP_MEMRD         (10)    //  OP[8]       ID[16] PA[48]           -> ACK[8] DATA[64]
+#define SEROP_MEMWT         (11)    //  OP[8]       ID[16] PA[48] DATA[64]  -> ACK[8]
+#define SEROP_PGRD          (12)    //  OFF[3]OP[5] ID[16] PPN[40]          -> ACK[8] DATA[512B]
+#define SEROP_PGST          (13)    //  OP[8]       ID[16] PPN[40] VALUE[64]-> ACK[8]
+#define SEROP_PGWT          (14)    //  OFF[3]OP[5] ID[16] PPN[40]          DATA[512B]-> ACK[8]
+#define SEROP_PGCP          (15)    //  OP[8]       ID[16] DST[40] SRC[40]  -> ACK[8]
 #define SEROP_CLK           (16)    //  OP[8]                               -> ACK[8] CLK[64]
 #define SEROP_NUM           (17)
+
+#define SERACK_ALLHALT      (63)
 
 typedef vector<uint8_t> BufT;
 
@@ -40,7 +42,7 @@ public:
     virtual void set_mmu(uint32_t cpu_id, PhysAddrT pgtable, AsidT asid);
     virtual void redirect(uint32_t cpu_id, VirtAddrT addr);
 
-    virtual bool next(uint32_t *itr_cpu, uint32_t *itr_cause, RawDataT *itr_arg);
+    virtual bool next(uint32_t *itr_cpu, VirtAddrT *itr_pc, uint32_t *itr_cause, RawDataT *itr_arg);
 
     virtual void flush_tlb_all(uint32_t cpu_id);
     virtual void flush_tlb_asid(uint32_t cpu_id, AsidT asid);

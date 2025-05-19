@@ -165,14 +165,15 @@ void SerialFPGAAdapter::redirect(uint32_t cpu_id, VirtAddrT addr) {
     simroot_assertf(SEROP_REDIR == value, "Operation Redirect on Core %d (0x%lx) Failed: %d", cpu_id, addr, value);
 }
 
-bool SerialFPGAAdapter::next(uint32_t *itr_cpu, uint32_t *itr_cause, RawDataT *itr_arg) {
+bool SerialFPGAAdapter::next(uint32_t *itr_cpu, VirtAddrT *itr_pc, uint32_t *itr_cause, RawDataT *itr_arg) {
     vector<uint8_t> buf, ret;
     int8_t value = _perform_op(SEROP_NEXT, buf, ret);
-    simroot_assertf(SEROP_NEXT == value, "Operation Next Failed: %d", value);
+    simroot_assertf(SEROP_NEXT == value || SERACK_ALLHALT == value, "Operation Next Failed: %d", value);
     *itr_cpu = _pop_int(ret, 2);
     *itr_cause = _pop_int(ret, 1);
-    *itr_arg = _pop_int(ret, 8);
-    return true;
+    *itr_pc = _pop_int(ret, 6);
+    *itr_arg = _pop_int(ret, 6);
+    return (SEROP_NEXT == value);
 }
 
 void SerialFPGAAdapter::flush_tlb_all(uint32_t cpu_id) {
@@ -236,13 +237,16 @@ void SerialFPGAAdapter::pxymem_write(uint32_t cpu_id, PhysAddrT paddr, RawDataT 
 }
 
 void SerialFPGAAdapter::pxymem_page_read(uint32_t cpu_id, PageIndexT ppn, void * dbuf) {
-    vector<uint8_t> buf, ret;
-    _append_int(buf, cpu_id, 2);
-    _append_int(buf, ppn, 5);
-    int8_t value = _perform_op(SEROP_PGRD, buf, ret);
-    simroot_assertf(SEROP_PGRD == value, "Operation PageRead on Core %d (0x%lx) Failed: %d", cpu_id, ppn, value);
-    simroot_assert(ret.size() == PAGE_LEN_BYTE);
-    memcpy(dbuf, ret.data(), PAGE_LEN_BYTE);
+    for(int32_t i = 0; i < 8; i++) {
+        vector<uint8_t> buf, ret;
+        _append_int(buf, cpu_id, 2);
+        _append_int(buf, ppn, 5);
+        int8_t op = (SEROP_PGRD | (i << 5));
+        int8_t value = _perform_op(op, buf, ret);
+        simroot_assertf(op == value, "Operation PageRead on Core %d (0x%lx) Failed: %d", cpu_id, ppn, value);
+        simroot_assert(ret.size() == PAGE_LEN_BYTE/8);
+        memcpy((uint8_t*)dbuf + (i*PAGE_LEN_BYTE/8), ret.data(), PAGE_LEN_BYTE/8);
+    }
 }
 
 void SerialFPGAAdapter::pxymem_page_set(uint32_t cpu_id, PageIndexT ppn, RawDataT value) {
@@ -255,12 +259,15 @@ void SerialFPGAAdapter::pxymem_page_set(uint32_t cpu_id, PageIndexT ppn, RawData
 }
 
 void SerialFPGAAdapter::pxymem_page_write(uint32_t cpu_id, PageIndexT ppn, void * dbuf) {
-    vector<uint8_t> buf, ret;
-    _append_int(buf, cpu_id, 2);
-    _append_int(buf, ppn, 5);
-    _append_buf(buf, dbuf, PAGE_LEN_BYTE);
-    int8_t value = _perform_op(SEROP_PGWT, buf, ret);
-    simroot_assertf(SEROP_PGWT == value, "Operation PageWrite on Core %d (0x%lx) Failed: %d", cpu_id, ppn, value);
+    for(int32_t i = 0; i < 8; i++) {
+        vector<uint8_t> buf, ret;
+        _append_int(buf, cpu_id, 2);
+        _append_int(buf, ppn, 5);
+        _append_buf(buf, (uint8_t*)dbuf + (i*PAGE_LEN_BYTE/8), PAGE_LEN_BYTE/8);
+        int8_t op = (SEROP_PGWT | (i << 5));
+        int8_t value = _perform_op(op, buf, ret);
+        simroot_assertf(op == value, "Operation PageWrite on Core %d (0x%lx) Failed: %d", cpu_id, ppn, value);
+    }
 }
 
 void SerialFPGAAdapter::pxymem_page_copy(uint32_t cpu_id, PageIndexT dst, PageIndexT src) {
