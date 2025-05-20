@@ -144,6 +144,11 @@ void execution() {
         TEST(test_serial_3(S[0]));
     });
 
+    OPERATION(op, "test4", {
+        ASSERT_MORE_ARGS(S, 1, "dev_path")
+        TEST(test_serial_4(S[0]));
+    });
+
 
     OPERATION(op, "test_pgtable", {
         TEST(test_pgtable());

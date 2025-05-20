@@ -151,7 +151,29 @@ bool test_serial_4(string dev_path) {
 
     printf("Init PageTable of VPage 0x10000 -> 0x80003\n");
     
+    dev->pxymem_write(0, 0x80000000UL + 8 * ((0x10000UL >> 18) & 0x1ff), (0x80001UL << 10) + 1);
+    dev->pxymem_write(0, 0x80001000UL + 8 * ((0x10000UL >> 9) & 0x1ff), (0x80002UL << 10) + 1);
+    dev->pxymem_write(0, 0x80002000UL + 8 * ((0x10000UL) & 0x1ff), (0x80003UL << 10) + 0xf);
+    dev->pxymem_write(0, 0x80003000UL, 0x06400893UL | (0x00000073UL << 32));
 
+    printf("Setup MMU\n");
+    dev->set_mmu(0, 0x80000000UL, 0);
+
+    printf("Start ILA Trigger, and Type \"1\" to Continue...\n");
+    do {
+        if(getchar() == '1') break;
+    } while(true);
+
+    printf("\nRedirect to VAddr 0x10000000\n");
+    dev->redirect(0, 0x10000000UL);
+
+    uint32_t cpuid = 0;
+    VirtAddrT pc = 0;
+    uint32_t cause = 0;
+    uint64_t arg = 0;
+    assert(dev->next(&cpuid, &pc, &cause, &arg));
+
+    printf("Got Event on CPU %d, @0x%lx, Cause %d, Arg 0x%lx\n", cpuid, pc, cause, arg);
 
     printf("Test 4 PASSED\n");
 
