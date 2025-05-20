@@ -384,25 +384,32 @@ class NulCPUCtrl() extends Module {
         }
     }
 
+    val def_pmp_cfg = ("h1f".U(64.W))
+    val def_pmp_addr = if(is_sv48) ("hffffffffffff".U(64.W)) else ("h7fffffffff".U(64.W))
+
     when(state === STATE_REDIR) {
-        backup_regs(0, 2)
-        when(cnt(2)) { write_reg(0, satp_back) }
-        when(cnt(3)) { write_reg_from_oparg(1, 2, 6) }
-        when(cnt(4)) { invoke_inst("h18029073".U) } // csrrw x0, satp, x5
-        when(cnt(5)) { invoke_inst("h34131073".U) } // csrrw x0, mepc, x6
+        backup_regs(0, 4)
+        when(cnt(4)) { write_reg(0, satp_back) }
+        when(cnt(5)) { write_reg_from_oparg(1, 2, 6) }
+        when(cnt(6)) { write_reg(2, def_pmp_cfg) }
+        when(cnt(7)) { write_reg(3, def_pmp_addr) }
+        when(cnt(8)) { invoke_inst("h18029073".U) } // csrrw x0, satp, x5
+        when(cnt(9)) { invoke_inst("h34131073".U) } // csrrw x0, mepc, x6
+        when(cnt(10)) { invoke_inst("h3a039073".U) } // csrrw x0, pmpcfg0, x7
+        when(cnt(11)) { invoke_inst("h3b041073".U) } // csrrw x0, pmpaddr0, x8
         // Clear MPP Bits (mstatus[12:11]) to return U mode
-        when(cnt(6)) { invoke_inst("h018002b7".U) } // lui x5 0x1800
-        when(cnt(7)) { invoke_inst("h3002b073".U) } // csrrc x0, mstatus, x5
-        when(cnt(8)) { wait_inst() }
-        recover_regs(9, 2)
-        when(cnt(11)) { invoke_inst("h30200073".U) } // mret
-        when(cnt(12)) {
+        when(cnt(12)) { invoke_inst("h018002b7".U) } // lui x5 0x1800
+        when(cnt(13)) { invoke_inst("h3002b073".U) } // csrrc x0, mstatus, x5
+        when(cnt(14)) { wait_inst() }
+        recover_regs(15, 4)
+        when(cnt(19)) { invoke_inst("h30200073".U) } // mret
+        when(cnt(20)) {
             io.cpu.inst64_flush := true.B 
             when(io.cpu.priv === 0.U) {
                 cnt := (cnt << 1)
             }
         }
-        when(cnt(13)) {
+        when(cnt(21)) {
             cnt := 1.U 
             state := STATE_SEND_HEAD
         }
