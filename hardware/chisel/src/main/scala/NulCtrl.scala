@@ -62,6 +62,7 @@ class NulCPUCtrl() extends Module {
     }
     
     val is_sv48 = false
+    val has_cbo_flush = true
 
     val SEROP_NEXT  = 0.U
     val SEROP_HALT  = 1.U
@@ -386,6 +387,7 @@ class NulCPUCtrl() extends Module {
 
     val def_pmp_cfg = ("h1f".U(64.W))
     val def_pmp_addr = if(is_sv48) ("hffffffffffff".U(64.W)) else ("h7fffffffff".U(64.W))
+    val cbo_flush_inst = if(has_cbo_flush) ("h0020200f".U(64.W)) else ("h00000013".U(64.W))
 
     when(state === STATE_REDIR) {
         backup_regs(0, 4)
@@ -400,16 +402,19 @@ class NulCPUCtrl() extends Module {
         // Clear MPP Bits (mstatus[12:11]) to return U mode
         when(cnt(12)) { invoke_inst("h018002b7".U) } // lui x5 0x1800
         when(cnt(13)) { invoke_inst("h3002b073".U) } // csrrc x0, mstatus, x5
-        when(cnt(14)) { wait_inst() }
-        recover_regs(15, 4)
-        when(cnt(19)) { invoke_inst("h30200073".U) } // mret
-        when(cnt(20)) {
+        when(cnt(14)) { invoke_inst("h0330000f".U) } // fence rw, rw
+        when(cnt(15)) { invoke_inst(cbo_flush_inst) } // cbo.flush or nop
+        when(cnt(16)) { invoke_inst("h0000100f".U) } // fence.i
+        when(cnt(17)) { wait_inst() }
+        recover_regs(18, 4)
+        when(cnt(22)) { invoke_inst("h30200073".U) } // mret
+        when(cnt(23)) {
             io.cpu.inst64_flush := true.B 
             when(io.cpu.priv === 0.U) {
                 cnt := (cnt << 1)
             }
         }
-        when(cnt(21)) {
+        when(cnt(24)) {
             cnt := 1.U 
             state := STATE_SEND_HEAD
         }
