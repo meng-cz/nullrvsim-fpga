@@ -133,6 +133,10 @@ typedef uint32_t PageFlagT;
 #define PTE_R   (1U<<1)
 #define PTE_W   (1U<<2)
 #define PTE_X   (1U<<3)
+#define PTE_A   (1U<<6)
+#define PTE_D   (1U<<7)
+
+#define PTE_LEAF_V (PTE_V | PTE_A | PTE_D)
 
 template<typename PT, typename VT>
 inline PT find_iteratable(PT begin, PT end, VT key) {

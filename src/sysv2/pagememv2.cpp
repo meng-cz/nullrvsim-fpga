@@ -342,6 +342,8 @@ void PageTable4K::debug_print_pgtable() {
                     if(pte & PTE_R) printf(", R");
                     if(pte & PTE_W) printf(", W");
                     if(pte & PTE_X) printf(", X");
+                    if(pte & PTE_A) printf(", A");
+                    if(pte & PTE_D) printf(", D");
                     printf("\n");
                 }
             }

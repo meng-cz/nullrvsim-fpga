@@ -78,7 +78,7 @@ VirtAddrT ThreadPageTableV2::alloc_mmap_fixed(VirtAddrT addr, uint64_t size, Pag
         });
     }
 
-    uint32_t pte_flgs = PTE_V;
+    uint32_t pte_flgs = PTE_LEAF_V;
     if(flag & PGFLAG_R) pte_flgs |= PTE_R;
     if(flag & PGFLAG_W) pte_flgs |= PTE_W;
     if(flag & PGFLAG_X) pte_flgs |= PTE_X;
@@ -299,7 +299,7 @@ void ThreadPageTableV2::apply_cow(VirtAddrT addr, TgtMemSetList *stlist, vector<
         }
         simroot_assert(vseg);
 
-        uint64_t pte_flgs = PTE_V;
+        uint64_t pte_flgs = PTE_LEAF_V;
         if(vseg->flag & PGFLAG_R) pte_flgs |= PTE_R;
         if(vseg->flag & PGFLAG_W) pte_flgs |= PTE_W;
         if(vseg->flag & PGFLAG_X) pte_flgs |= PTE_X;
@@ -480,7 +480,7 @@ VirtAddrT ThreadPageTableV2::alloc_brk(VirtAddrT brk, TgtMemSetList *stlist) {
         uint64_t vpcnt = CEIL_DIV(brk, PAGE_LEN_BYTE) - vpindex;
         for(VPageIndexT vpn = vpindex; vpn < vpindex + vpcnt; vpn++) {
             PageIndexT ppn = ppman->alloc();
-            pt->pt_insert(vpn, (ppn << 10) | (PTE_V | PTE_W | PTE_R), stlist);
+            pt->pt_insert(vpn, (ppn << 10) | (PTE_LEAF_V | PTE_W | PTE_R), stlist);
         }
         brk_va = brk;
         ret = brk_va;
@@ -512,7 +512,7 @@ void ThreadPageTableV2::init_elf_seg(VirtAddrT addr, uint64_t size, PageFlagT fl
     uint64_t vpcnt = CEIL_DIV(addr + size, PAGE_LEN_BYTE) - vpi;
     uint64_t off_in_page = (addr & (PAGE_LEN_BYTE - 1));
 
-    uint64_t pte_flgs = (PTE_V);
+    uint64_t pte_flgs = (PTE_LEAF_V);
     if(flag & PGFLAG_R) pte_flgs |= PTE_R;
     if(flag & PGFLAG_W) pte_flgs |= PTE_W;
     if(flag & PGFLAG_X) pte_flgs |= PTE_X;
