@@ -151,13 +151,16 @@ bool test_serial_4(string dev_path) {
 
     printf("Init PageTable of VPage 0x10000 -> 0x80003\n");
     
-    dev->pxymem_write(0, 0x80000000UL + 8 * ((0x10000UL >> 18) & 0x1ff), (0x80001UL << 10) + 1 + (3<<6));
-    dev->pxymem_write(0, 0x80001000UL + 8 * ((0x10000UL >> 9) & 0x1ff), (0x80002UL << 10) + 1 + (3<<6));
-    dev->pxymem_write(0, 0x80002000UL + 8 * ((0x10000UL) & 0x1ff), (0x80003UL << 10) + 0xf + (3<<6));
+    dev->pxymem_write(0, 0x80000000UL + 8 * ((0x10000UL >> 18) & 0x1ff), (0x80001UL << 10) + 1);
+    dev->pxymem_write(0, 0x80001000UL + 8 * ((0x10000UL >> 9) & 0x1ff), (0x80002UL << 10) + 1);
+    dev->pxymem_write(0, 0x80002000UL + 8 * ((0x10000UL) & 0x1ff), (0x80003UL << 10) + 0xdf);
     dev->pxymem_write(0, 0x80003000UL, 0x06400893UL | (0x00000073UL << 32));
 
     printf("Setup MMU\n");
     dev->set_mmu(0, 0x80000000UL, 0);
+
+    printf("Flush TLB\n");
+    dev->flush_tlb_all(0);
 
     printf("Start ILA Trigger, and Type \"1\" to Continue...\n");
     do {
