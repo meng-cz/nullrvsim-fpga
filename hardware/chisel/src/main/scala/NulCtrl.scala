@@ -407,19 +407,22 @@ class NulCPUCtrl() extends Module {
         when(cnt(10)) { invoke_inst("h3a039073".U) } // csrrw x0, pmpcfg0, x7
         when(cnt(11)) { invoke_inst("h3b041073".U) } // csrrw x0, pmpaddr0, x8
         // Clear MPP Bits (mstatus[12:11]) to return U mode
-        when(cnt(12)) { invoke_inst("h018002b7".U) } // lui x5 0x1800
-        when(cnt(13)) { invoke_inst("h3002b073".U) } // csrrc x0, mstatus, x5
-        when(cnt(14)) { invoke_inst("h0330000f".U) } // fence rw, rw
-        when(cnt(15)) { invoke_inst("h0000100f".U) } // fence.i
-        when(cnt(16)) { wait_inst() }
-        recover_regs(17, 4)
-        when(cnt(21)) { invoke_inst("h30200073".U) } // mret
-        when(cnt(22)) {
+        when(cnt(12)) { invoke_inst("h300022f3".U) } // csrrs x5, mstatus, x0
+        when(cnt(13)) { invoke_inst("h01800337".U) } // lui x6, 0x1800
+        when(cnt(14)) { invoke_inst("hfff34393".U) } // xori x7, x6, -1
+        when(cnt(15)) { invoke_inst("h0072f2b3".U) } // and x5, x5, x7
+        when(cnt(16)) { invoke_inst("h30029073".U) } // csrrw x0, mstatus, x5
+        when(cnt(17)) { invoke_inst("h0330000f".U) } // fence rw, rw
+        when(cnt(18)) { invoke_inst("h0000100f".U) } // fence.i
+        when(cnt(19)) { wait_inst() }
+        recover_regs(20, 4)
+        when(cnt(24)) { invoke_inst("h30200073".U) } // mret
+        when(cnt(25)) {
             io.cpu.inst64_flush := true.B 
             cnt := (cnt << 1)
             cpu_state := CPU_USER
         }
-        when(cnt(23)) {
+        when(cnt(26)) {
             cnt := 1.U 
             state := STATE_SEND_HEAD
         }
