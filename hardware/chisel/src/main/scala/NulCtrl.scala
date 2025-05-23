@@ -37,7 +37,11 @@ class NulCPUCtrl() extends Module {
     io.tx.valid := false.B 
     io.tx.bits := 0.U 
 
-    io.cpu.stop_fetch := (io.cpu.priv =/= 0.U)
+    val CPU_HALT = 0.U 
+    val CPU_ITR  = 1.U 
+    val CPU_USER = 2.U 
+    val cpu_state = RegInit(0.U(2.W))
+
     io.cpu.regacc_rd := false.B 
     io.cpu.regacc_wt := false.B 
     io.cpu.regacc_idx := 0.U 
@@ -59,10 +63,11 @@ class NulCPUCtrl() extends Module {
     val last_priv = RegNext(io.cpu.priv, 3.U(2.W))
     when(last_priv === 0.U && io.cpu.priv =/= 0.U) {
         eq_valid := true.B 
+        cpu_state := CPU_ITR
     }
+    io.cpu.stop_fetch := (cpu_state =/= CPU_USER) || (last_priv === 0.U && io.cpu.priv =/= 0.U)
     
     val is_sv48 = false
-    val has_cbo_flush = true
 
     val SEROP_NEXT  = 0.U
     val SEROP_HALT  = 1.U
@@ -147,7 +152,10 @@ class NulCPUCtrl() extends Module {
         trans_pos := 0.U
         switch(opcode) {
             is(SEROP_NEXT) { state := STATE_WAIT_NEXT }
-            is(SEROP_HALT) { state := STATE_SEND_HEAD }
+            is(SEROP_HALT) {
+                cpu_state := CPU_HALT
+                state := STATE_SEND_HEAD
+            }
             is(SEROP_ITR) { state := STATE_SEND_HEAD }
             is(SEROP_MMU) { state := STATE_MMU }
             is(SEROP_REDIR) { state := STATE_REDIR }
@@ -387,7 +395,6 @@ class NulCPUCtrl() extends Module {
 
     val def_pmp_cfg = ("h1f".U(64.W))
     val def_pmp_addr = if(is_sv48) ("hffffffffffff".U(64.W)) else ("h7fffffffff".U(64.W))
-    val cbo_flush_inst = if(has_cbo_flush) ("h0020200f".U(64.W)) else ("h00000013".U(64.W))
 
     when(state === STATE_REDIR) {
         backup_regs(0, 4)
@@ -403,18 +410,16 @@ class NulCPUCtrl() extends Module {
         when(cnt(12)) { invoke_inst("h018002b7".U) } // lui x5 0x1800
         when(cnt(13)) { invoke_inst("h3002b073".U) } // csrrc x0, mstatus, x5
         when(cnt(14)) { invoke_inst("h0330000f".U) } // fence rw, rw
-        when(cnt(15)) { invoke_inst(cbo_flush_inst) } // cbo.flush or nop
-        when(cnt(16)) { invoke_inst("h0000100f".U) } // fence.i
-        when(cnt(17)) { wait_inst() }
-        recover_regs(18, 4)
-        when(cnt(22)) { invoke_inst("h30200073".U) } // mret
-        when(cnt(23)) {
+        when(cnt(15)) { invoke_inst("h0000100f".U) } // fence.i
+        when(cnt(16)) { wait_inst() }
+        recover_regs(17, 4)
+        when(cnt(21)) { invoke_inst("h30200073".U) } // mret
+        when(cnt(22)) {
             io.cpu.inst64_flush := true.B 
-            when(io.cpu.priv === 0.U) {
-                cnt := (cnt << 1)
-            }
+            cnt := (cnt << 1)
+            cpu_state := CPU_USER
         }
-        when(cnt(24)) {
+        when(cnt(23)) {
             cnt := 1.U 
             state := STATE_SEND_HEAD
         }
