@@ -60,7 +60,7 @@ SerialFPGAAdapter::SerialFPGAAdapter(string devfile, uint32_t baudrate) {
     tio.c_oflag &= ~OPOST;
 
     tio.c_cc[VMIN] = 1;
-    tio.c_cc[VTIME] = 5;
+    tio.c_cc[VTIME] = 0;
 
     simroot_assertf(tcsetattr(fd,TCSANOW,&tio) == 0, "Setup Serail Device %s Failed", devfile.c_str());
 
