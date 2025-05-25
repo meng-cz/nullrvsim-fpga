@@ -6,6 +6,7 @@ import chisel3.util._
 
 class NulCPUBundle extends Bundle {
     val priv            = Input (UInt(2.W))     // 核心实时的特权级状态（U:0, S:1, M:3）
+    val ext_itr         = OUtput(Bool())        // 拉高时：触发核心外部中断
     val stop_fetch      = Output(Bool())        // 拉高时：核心停止向后端发送取到的指令，后端仅能接受由inst64接口注入的指令
 
     val regacc_rd       = Output(Bool())        // 拉高时：请求一次寄存器读，与regacc_wt互斥
@@ -42,6 +43,7 @@ class NulCPUCtrl() extends Module {
     val CPU_USER = 2.U 
     val cpu_state = RegInit(0.U(2.W))
 
+    io.cpu.ext_itr := false.B
     io.cpu.regacc_rd := false.B 
     io.cpu.regacc_wt := false.B 
     io.cpu.regacc_idx := 0.U 
@@ -61,7 +63,7 @@ class NulCPUCtrl() extends Module {
     val eq_valid = RegInit(false.B)
     
     val last_priv = RegNext(io.cpu.priv, 3.U(2.W))
-    when(last_priv === 0.U && io.cpu.priv =/= 0.U) {
+    when(last_priv === 0.U && io.cpu.priv =/= 0.U && cpu_state === CPU_USER) {
         eq_valid := true.B 
         cpu_state := CPU_ITR
     }
@@ -153,10 +155,14 @@ class NulCPUCtrl() extends Module {
         switch(opcode) {
             is(SEROP_NEXT) { state := STATE_WAIT_NEXT }
             is(SEROP_HALT) {
+                io.cpu.ext_itr := true.B
                 cpu_state := CPU_HALT
                 state := STATE_SEND_HEAD
             }
-            is(SEROP_ITR) { state := STATE_SEND_HEAD }
+            is(SEROP_ITR) {
+                io.cpu.ext_itr := true.B
+                state := STATE_SEND_HEAD
+            }
             is(SEROP_MMU) { state := STATE_MMU }
             is(SEROP_REDIR) { state := STATE_REDIR }
             is(SEROP_FTLB) { state := STATE_FLUSH }
