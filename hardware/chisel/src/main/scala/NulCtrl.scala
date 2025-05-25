@@ -6,7 +6,7 @@ import chisel3.util._
 
 class NulCPUBundle extends Bundle {
     val priv            = Input (UInt(2.W))     // 核心实时的特权级状态（U:0, S:1, M:3）
-    val ext_itr         = OUtput(Bool())        // 拉高时：触发核心外部中断
+    val ext_itr         = Output(Bool())        // 拉高时：触发核心外部中断
     val stop_fetch      = Output(Bool())        // 拉高时：核心停止向后端发送取到的指令，后端仅能接受由inst64接口注入的指令
 
     val regacc_rd       = Output(Bool())        // 拉高时：请求一次寄存器读，与regacc_wt互斥
@@ -78,7 +78,7 @@ class NulCPUCtrl() extends Module {
     val SEROP_REDIR = 4.U
     val SEROP_FTLB  = 5.U
     val SEROP_FTLB2 = 6.U
-    val SEROP_FTLB3 = 7.U
+    val SEROP_SYNCI = 7.U
     val SEROP_REGRD = 8.U
     val SEROP_REGWT = 9.U
     val SEROP_MEMRD = 10.U
@@ -89,10 +89,13 @@ class NulCPUCtrl() extends Module {
     val SEROP_PGCP  = 15.U
     val SEROP_CLK   = 16.U
 
-    val STATE_RECV_HEAD     = 0.U
-    val STATE_RECV_ARG      = 1.U
-    val STATE_SEND_HEAD     = 2.U 
-    val STATE_SEND_ARG      = 3.U 
+    val STATE_INIT_WAIT     = 0.U 
+    val STATE_DO_INIT       = 1.U
+
+    val STATE_RECV_HEAD     = 2.U
+    val STATE_RECV_ARG      = 3.U
+    val STATE_SEND_HEAD     = 4.U 
+    val STATE_SEND_ARG      = 5.U 
 
     val STATE_WAIT_NEXT     = 8.U 
     val STATE_NEXT          = 9.U 
@@ -107,6 +110,7 @@ class NulCPUCtrl() extends Module {
     val STATE_PGST          = 18.U 
     val STATE_PGWT          = 19.U 
     val STATE_PGCP          = 20.U 
+    val STATE_SYNCI         = 21.U 
 
     val state = RegInit(0.U(5.W))
     val trans_bytes = RegInit(0.U(10.W))
@@ -119,21 +123,25 @@ class NulCPUCtrl() extends Module {
     val oparg = RegInit(VecInit(Seq.fill(16)(0.U(8.W))))
     val retarg = RegInit(VecInit(Seq.fill(16)(0.U(8.W))))
 
+    when(state === STATE_INIT_WAIT && io.cpu.priv === 3.U) {
+        state := STATE_DO_INIT
+    }
+
     when(state === STATE_RECV_HEAD && io.rx.valid) {
         val rxop = io.rx.bits(4, 0)
         val rxoff = io.rx.bits(7, 5)
         opcode := rxop
         opoff := rxoff
 
-        when(rxop === SEROP_HALT || rxop === SEROP_ITR || rxop === SEROP_FTLB) {
+        when(rxop === SEROP_HALT || rxop === SEROP_ITR || rxop === SEROP_FTLB || rxop === SEROP_SYNCI) {
             trans_bytes := 2.U 
-        }.elsewhen(rxop === SEROP_FTLB2 || rxop === SEROP_REGRD) {
+        }.elsewhen(rxop === SEROP_REGRD) {
             trans_bytes := 4.U 
         }.elsewhen(rxop === SEROP_PGRD || rxop === SEROP_PGWT) {
             trans_bytes := 7.U 
         }.elsewhen(rxop === SEROP_REDIR || rxop === SEROP_MEMRD) {
             trans_bytes := 8.U 
-        }.elsewhen(rxop === SEROP_MMU || rxop === SEROP_FTLB3) {
+        }.elsewhen(rxop === SEROP_MMU || rxop === SEROP_FTLB2) {
             trans_bytes := 9.U 
         }.elsewhen(rxop === SEROP_REGWT || rxop === SEROP_PGCP) {
             trans_bytes := 12.U 
@@ -167,7 +175,7 @@ class NulCPUCtrl() extends Module {
             is(SEROP_REDIR) { state := STATE_REDIR }
             is(SEROP_FTLB) { state := STATE_FLUSH }
             is(SEROP_FTLB2) { state := STATE_FLUSH }
-            is(SEROP_FTLB3) { state := STATE_FLUSH }
+            is(SEROP_SYNCI) { state := STATE_SYNCI }
             is(SEROP_REGRD) { state := STATE_REGRD }
             is(SEROP_REGWT) { state := STATE_REGWT }
             is(SEROP_MEMRD) { state := STATE_MEMRD }
@@ -321,8 +329,32 @@ class NulCPUCtrl() extends Module {
         }
     }
 
+    val def_pmp_cfg = ("h1f".U(64.W))
+    val def_pmp_addr = if(is_sv48) ("hffffffffffff".U(64.W)) else ("h7fffffffff".U(64.W))
+
+    when(state === STATE_DO_INIT) {
+        when(cnt(0)) { write_reg(2, def_pmp_cfg) }
+        when(cnt(1)) { write_reg(3, def_pmp_addr) }
+        when(cnt(2)) { invoke_inst("h3a039073".U) } // csrrw x0, pmpcfg0, x7
+        when(cnt(3)) { invoke_inst("h3b041073".U) } // csrrw x0, pmpaddr0, x8
+        when(cnt(4)) { wait_inst() }
+        when(cnt(5)) {
+            cnt := 1.U 
+            state := STATE_RECV_HEAD
+        }
+    }
+
     when(state === STATE_FLUSH) {
         when(cnt(0)) { invoke_inst("b00010010000000000000000001110011".U) } // sfence.vma x0, x0
+        when(cnt(1)) { wait_inst() }
+        when(cnt(2)) {
+            cnt := 1.U 
+            state := STATE_SEND_HEAD
+        }
+    }
+
+    when(state === STATE_SYNCI) {
+        when(cnt(0)) { invoke_inst("h0000100f".U) } // fence.i
         when(cnt(1)) { wait_inst() }
         when(cnt(2)) {
             cnt := 1.U 
@@ -399,34 +431,26 @@ class NulCPUCtrl() extends Module {
         }
     }
 
-    val def_pmp_cfg = ("h1f".U(64.W))
-    val def_pmp_addr = if(is_sv48) ("hffffffffffff".U(64.W)) else ("h7fffffffff".U(64.W))
-
     when(state === STATE_REDIR) {
-        backup_regs(0, 4)
-        when(cnt(4)) { write_reg(0, satp_back) }
-        when(cnt(5)) { write_reg_from_oparg(1, 2, 6) }
-        when(cnt(6)) { write_reg(2, def_pmp_cfg) }
-        when(cnt(7)) { write_reg(3, def_pmp_addr) }
-        when(cnt(8)) { invoke_inst("h18029073".U) } // csrrw x0, satp, x5
-        when(cnt(9)) { invoke_inst("h34131073".U) } // csrrw x0, mepc, x6
-        when(cnt(10)) { invoke_inst("h3a039073".U) } // csrrw x0, pmpcfg0, x7
-        when(cnt(11)) { invoke_inst("h3b041073".U) } // csrrw x0, pmpaddr0, x8
+        backup_regs(0, 2)
+        when(cnt(2)) { write_reg(0, satp_back) }
+        when(cnt(3)) { write_reg_from_oparg(1, 2, 6) }
+        when(cnt(4)) { invoke_inst("h18029073".U) } // csrrw x0, satp, x5
+        when(cnt(5)) { invoke_inst("h34131073".U) } // csrrw x0, mepc, x6
         // Clear MPP Bits (mstatus[12:11]) to return U mode
-        when(cnt(12)) { invoke_inst("h00300293".U) } // addi x5, x0, 3
-        when(cnt(13)) { invoke_inst("h00b29293".U) } // slli x5, x5, 11
-        when(cnt(14)) { invoke_inst("h3002b073".U) } // csrrc x0, mstatus, x5
-        when(cnt(15)) { invoke_inst("h0330000f".U) } // fence rw, rw
-        when(cnt(16)) { invoke_inst("h0000100f".U) } // fence.i
-        when(cnt(17)) { wait_inst() }
-        recover_regs(18, 4)
-        when(cnt(22)) { invoke_inst("h30200073".U) } // mret
-        when(cnt(23)) {
+        when(cnt(6)) { invoke_inst("h00300293".U) } // addi x5, x0, 3
+        when(cnt(7)) { invoke_inst("h00b29293".U) } // slli x5, x5, 11
+        when(cnt(8)) { invoke_inst("h3002b073".U) } // csrrc x0, mstatus, x5
+        when(cnt(9)) { invoke_inst("h0330000f".U) } // fence rw, rw
+        when(cnt(10)) { wait_inst() }
+        recover_regs(11, 2)
+        when(cnt(13)) { invoke_inst("h30200073".U) } // mret
+        when(cnt(14)) {
             io.cpu.inst64_flush := true.B 
             cnt := (cnt << 1)
             cpu_state := CPU_USER
         }
-        when(cnt(24)) {
+        when(cnt(15)) {
             cnt := 1.U 
             state := STATE_SEND_HEAD
         }

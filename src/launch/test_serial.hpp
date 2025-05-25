@@ -167,6 +167,14 @@ bool test_serial_4(string dev_path) {
         if(getchar() == '1') break;
     } while(true);
 
+    printf("\nFence-I\n");
+    dev->sync_inst_stream(0);
+    
+    printf("Start ILA Trigger, and Type \"1\" to Continue...\n");
+    do {
+        if(getchar() == '1') break;
+    } while(true);
+
     printf("\nRedirect to VAddr 0x10000000\n");
     dev->redirect(0, 0x10000000UL);
 

@@ -13,8 +13,8 @@ using simcpu::CPUGroupInterface;
 #define SEROP_MMU           (3)     //  OP[8]       ID[16] ASID[16] PT[40]  -> ACK[8]
 #define SEROP_REDIR         (4)     //  OP[8]       ID[16] PC[48]           -> ACK[8]
 #define SEROP_FTLB          (5)     //  OP[8]       ID[16]                  -> ACK[8]
-#define SEROP_FTLB2         (6)     //  OP[8]       ID[16] ASID[16]         -> ACK[8]
-#define SEROP_FTLB3         (7)     //  OP[8]       ID[16] ASID[16] VPN[40] -> ACK[8]
+#define SEROP_FTLB2         (6)     //  OP[8]       ID[16] ASID[16] VPN[40] -> ACK[8]
+#define SEROP_SYNCI         (7)     //  OP[8]       ID[16]                  -> ACK[8]
 #define SEROP_REGRD         (8)     //  OP[8]       ID[16] REG[16]          -> ACK[8] DATA[64]
 #define SEROP_REGWT         (9)     //  OP[8]       ID[16] REG[16] DATA[64] -> ACK[8]
 #define SEROP_MEMRD         (10)    //  OP[8]       ID[16] PA[48]           -> ACK[8] DATA[64]
@@ -45,8 +45,10 @@ public:
     virtual bool next(uint32_t *itr_cpu, VirtAddrT *itr_pc, uint32_t *itr_cause, RawDataT *itr_arg);
 
     virtual void flush_tlb_all(uint32_t cpu_id);
-    virtual void flush_tlb_asid(uint32_t cpu_id, AsidT asid);
+    virtual void flush_tlb_asid(uint32_t cpu_id, AsidT asid) { flush_tlb_vpgidx(cpu_id, 0, asid); };
     virtual void flush_tlb_vpgidx(uint32_t cpu_id, VirtAddrT vaddr, AsidT asid);
+
+    virtual void sync_inst_stream(uint32_t cpu_id);
 
     virtual RawDataT regacc_read(uint32_t cpu_id, RVRegIndexT vreg);
     virtual void regacc_write(uint32_t cpu_id, RVRegIndexT vreg, RawDataT data);

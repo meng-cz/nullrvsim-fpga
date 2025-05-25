@@ -197,21 +197,20 @@ void SerialFPGAAdapter::flush_tlb_all(uint32_t cpu_id) {
     simroot_assertf(SEROP_FTLB == value, "Operation FlushTLB on Core %d Failed: %d", cpu_id, value);
 }
 
-void SerialFPGAAdapter::flush_tlb_asid(uint32_t cpu_id, AsidT asid) {
-    vector<uint8_t> buf, ret;
-    _append_int(buf, cpu_id, 2);
-    _append_int(buf, asid, 2);
-    int8_t value = _perform_op(SEROP_FTLB2, buf, ret);
-    simroot_assertf(SEROP_FTLB2 == value, "Operation FlushTLB2 on Core %d (%d) Failed: %d", cpu_id, asid, value);
-}
-
 void SerialFPGAAdapter::flush_tlb_vpgidx(uint32_t cpu_id, VirtAddrT vaddr, AsidT asid) {
     vector<uint8_t> buf, ret;
     _append_int(buf, cpu_id, 2);
     _append_int(buf, asid, 2);
     _append_int(buf, vaddr >> PAGE_ADDR_OFFSET, 5);
-    int8_t value = _perform_op(SEROP_FTLB3, buf, ret);
-    simroot_assertf(SEROP_FTLB3 == value, "Operation FlushTLB3 on Core %d (%d, 0x%lx) Failed: %d", cpu_id, asid, vaddr >> PAGE_ADDR_OFFSET, value);
+    int8_t value = _perform_op(SEROP_FTLB2, buf, ret);
+    simroot_assertf(SEROP_FTLB2 == value, "Operation FlushTLB2 on Core %d (%d, 0x%lx) Failed: %d", cpu_id, asid, vaddr >> PAGE_ADDR_OFFSET, value);
+}
+
+void SerialFPGAAdapter::sync_inst_stream(uint32_t cpu_id) {
+    vector<uint8_t> buf, ret;
+    _append_int(buf, cpu_id, 2);
+    int8_t value = _perform_op(SEROP_SYNCI, buf, ret);
+    simroot_assertf(SEROP_SYNCI == value, "Operation SyncI on Core %d Failed: %d", cpu_id, value);
 }
 
 RawDataT SerialFPGAAdapter::regacc_read(uint32_t cpu_id, RVRegIndexT vreg) {

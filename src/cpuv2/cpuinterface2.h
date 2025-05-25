@@ -23,6 +23,8 @@ public:
     virtual void flush_tlb_asid(uint32_t cpu_id, AsidT asid) = 0;
     virtual void flush_tlb_vpgidx(uint32_t cpu_id, VirtAddrT vaddr, AsidT asid) = 0;
 
+    virtual void sync_inst_stream(uint32_t cpu_id) {};
+
     virtual RawDataT regacc_read(uint32_t cpu_id, RVRegIndexT vreg) = 0;
     virtual void regacc_write(uint32_t cpu_id, RVRegIndexT vreg, RawDataT data) = 0;
 
