@@ -191,3 +191,44 @@ bool test_serial_4(string dev_path) {
     return true;
 }
 
+bool test_serial_5(string dev_path) {
+
+    uint32_t baudrate = conf::get_int("serial", "baudrate", 115200);
+
+    uint64_t mem_base = conf::get_int("root", "memory_base_addr", 0);
+    simroot_assert((mem_base % PAGE_LEN_BYTE) == 0);
+
+    SerialFPGAAdapter * dev = new SerialFPGAAdapter(dev_path, baudrate);
+
+    printf("Test 4 Start\n");
+
+    printf("Random DDR RW Test on 0x%lx\n", mem_base);
+    uint64_t mem_size = (1UL << 30);
+
+    std::unordered_map<uint64_t, uint64_t> sts;
+    
+    for(int i = 0; i < 100; i++) {
+        uint64_t addr = (ALIGN(rand_long(), 8) % mem_size) + mem_base;
+        uint64_t data = rand_long();
+        sts.insert(std::make_pair(addr, data));
+        dev->pxymem_write(0, addr, data);
+    }
+
+    int passed = 0;
+    int failed = 0;
+    for(auto &e : sts) {
+        uint64_t data = dev->pxymem_read(0, e.first);
+        if(data != e.second) {
+            failed++;
+            printf("@0x%lx: supposed 0x%lx, get 0x%lx\n", e.first, e.second, data);
+        } else {
+            passed++;
+        }
+    }
+
+    printf("Finished, %d passed, %d failed\n", passed, failed);
+
+    return true;
+}
+
+
