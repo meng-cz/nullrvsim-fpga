@@ -8,7 +8,7 @@ bool test_serial_1(string dev_path) {
 
     uint32_t baudrate = conf::get_int("serial", "baudrate", 115200);
 
-    uint64_t mem_base = conf::get_int("root", "memory_base_addr", 0);
+    uint64_t mem_base = conf::get_inthex("root", "memory_base_addr", 0);
     simroot_assert((mem_base % PAGE_LEN_BYTE) == 0);
 
     SerialFPGAAdapter * dev = new SerialFPGAAdapter(dev_path, baudrate);
@@ -39,7 +39,7 @@ bool test_serial_2(string dev_path) {
 
     uint32_t baudrate = conf::get_int("serial", "baudrate", 115200);
 
-    uint64_t mem_base = conf::get_int("root", "memory_base_addr", 0);
+    uint64_t mem_base = conf::get_inthex("root", "memory_base_addr", 0);
     simroot_assert((mem_base % PAGE_LEN_BYTE) == 0);
 
     SerialFPGAAdapter * dev = new SerialFPGAAdapter(dev_path, baudrate);
@@ -83,7 +83,7 @@ bool test_serial_3(string dev_path) {
 
     uint32_t baudrate = conf::get_int("serial", "baudrate", 115200);
 
-    uint64_t mem_base = conf::get_int("root", "memory_base_addr", 0);
+    uint64_t mem_base = conf::get_inthex("root", "memory_base_addr", 0);
     simroot_assert((mem_base % PAGE_LEN_BYTE) == 0);
 
     SerialFPGAAdapter * dev = new SerialFPGAAdapter(dev_path, baudrate);
@@ -133,7 +133,7 @@ bool test_serial_4(string dev_path) {
 
     uint32_t baudrate = conf::get_int("serial", "baudrate", 115200);
 
-    uint64_t mem_base = conf::get_int("root", "memory_base_addr", 0);
+    uint64_t mem_base = conf::get_inthex("root", "memory_base_addr", 0);
     simroot_assert((mem_base % PAGE_LEN_BYTE) == 0);
 
     SerialFPGAAdapter * dev = new SerialFPGAAdapter(dev_path, baudrate);
@@ -195,7 +195,7 @@ bool test_serial_5(string dev_path) {
 
     uint32_t baudrate = conf::get_int("serial", "baudrate", 115200);
 
-    uint64_t mem_base = conf::get_int("root", "memory_base_addr", 0);
+    uint64_t mem_base = conf::get_inthex("root", "memory_base_addr", 0);
     simroot_assert((mem_base % PAGE_LEN_BYTE) == 0);
 
     SerialFPGAAdapter * dev = new SerialFPGAAdapter(dev_path, baudrate);

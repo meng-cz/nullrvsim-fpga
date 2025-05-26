@@ -88,6 +88,7 @@ class NulCPUCtrl() extends Module {
     val SEROP_PGWT  = 14.U
     val SEROP_PGCP  = 15.U
     val SEROP_CLK   = 16.U
+    val SEROP_INST  = 20.U
 
     val STATE_INIT_WAIT     = 0.U 
     val STATE_DO_INIT       = 1.U
@@ -111,6 +112,7 @@ class NulCPUCtrl() extends Module {
     val STATE_PGWT          = 19.U 
     val STATE_PGCP          = 20.U 
     val STATE_SYNCI         = 21.U 
+    val STATE_INST          = 22.U 
 
     val state = RegInit(0.U(5.W))
     val trans_bytes = RegInit(0.U(10.W))
@@ -137,6 +139,8 @@ class NulCPUCtrl() extends Module {
             trans_bytes := 2.U 
         }.elsewhen(rxop === SEROP_REGRD) {
             trans_bytes := 4.U 
+        }.elsewhen(rxop === SEROP_INST) {
+            trans_bytes := 6.U 
         }.elsewhen(rxop === SEROP_PGRD || rxop === SEROP_PGWT) {
             trans_bytes := 7.U 
         }.elsewhen(rxop === SEROP_REDIR || rxop === SEROP_MEMRD) {
@@ -190,6 +194,7 @@ class NulCPUCtrl() extends Module {
                     retarg(i) := global_clk(i*8+7, i*8)
                 }
             }
+            is(SEROP_INST) { state := STATE_INST }
         }
     }.elsewhen(state === STATE_RECV_ARG && io.rx.valid) {
         oparg(trans_pos) := io.rx.bits
@@ -341,6 +346,15 @@ class NulCPUCtrl() extends Module {
         when(cnt(5)) {
             cnt := 1.U 
             state := STATE_RECV_HEAD
+        }
+    }
+
+    when(state === STATE_INST) {
+        when(cnt(0)) { invoke_inst(Cat(oparg(5), oparg(4), oparg(3), oparg(2))) }
+        when(cnt(1)) { wait_inst() }
+        when(cnt(2)) {
+            cnt := 1.U 
+            state := STATE_SEND_HEAD
         }
     }
 
