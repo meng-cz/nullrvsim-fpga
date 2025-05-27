@@ -38,7 +38,7 @@ bool mpv2(std::vector<string> &argv) {
     uint64_t mem_base = conf::get_inthex("root", "memory_base_addr_hex", 0);
     simroot_assert((mem_base % PAGE_LEN_BYTE) == 0);
 
-    shared_ptr<AtomicSMPCores> hardwares = make_shared<AtomicSMPCores>(cpu_num, mem_size);
+    shared_ptr<AtomicSMPCores> hardwares = make_shared<AtomicSMPCores>(cpu_num, mem_base, mem_size);
     simroot::add_sim_object(hardwares.get(), "Hardware");
     
     shared_ptr<SMPSystemV2> sys = make_shared<SMPSystemV2>(workload, hardwares.get(), cpu_num, mem_base, mem_size);

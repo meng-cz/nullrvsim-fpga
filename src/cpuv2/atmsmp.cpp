@@ -12,7 +12,7 @@ using isa::RV64OPCode;
 
 namespace simcpu {
 
-AtomicSMPCores::AtomicSMPCores(uint32_t core_num, uint64_t mem_size) {
+AtomicSMPCores::AtomicSMPCores(uint32_t core_num, PhysAddrT mem_base, uint64_t mem_size) {
 
     cores.resize(core_num);
     for(auto &c : cores) {
@@ -26,6 +26,7 @@ AtomicSMPCores::AtomicSMPCores(uint32_t core_num, uint64_t mem_size) {
         c.finished_inst_cnt = 0;
     }
 
+    this->mem_base = mem_base;
     main_mem.resize(mem_size);
 
     if(conf::get_int("cpu", "log_inst_to_file", 0)) {
@@ -169,25 +170,25 @@ void AtomicSMPCores::regacc_write(uint32_t cpu_id, RVRegIndexT vreg, RawDataT da
 }
 
 RawDataT AtomicSMPCores::pxymem_read(uint32_t cpu_id, PhysAddrT paddr) {
-    return *((RawDataT*)(main_mem.data() + (paddr & (~7UL))));
+    return *((RawDataT*)(main_mem.data() + ((paddr - mem_base) & (~7UL))));
 }
 void AtomicSMPCores::pxymem_write(uint32_t cpu_id, PhysAddrT paddr, RawDataT data) {
-    *((RawDataT*)(main_mem.data() + (paddr & (~7UL)))) = data;
+    *((RawDataT*)(main_mem.data() + ((paddr - mem_base) & (~7UL)))) = data;
 }
 
 void AtomicSMPCores::pxymem_page_read(uint32_t cpu_id, PageIndexT ppn, void * buf) {
-    memcpy(buf, main_mem.data() + (ppn * PAGE_LEN_BYTE), PAGE_LEN_BYTE);
+    memcpy(buf, main_mem.data() + ((ppn * PAGE_LEN_BYTE) - mem_base), PAGE_LEN_BYTE);
 }
 void AtomicSMPCores::pxymem_page_set(uint32_t cpu_id, PageIndexT ppn, RawDataT value) {
     vector<RawDataT> buf;
     buf.assign(PAGE_LEN_BYTE/8, value);
-    memcpy(main_mem.data() + (ppn * PAGE_LEN_BYTE), buf.data(), PAGE_LEN_BYTE);
+    memcpy(main_mem.data() + ((ppn * PAGE_LEN_BYTE) - mem_base), buf.data(), PAGE_LEN_BYTE);
 }
 void AtomicSMPCores::pxymem_page_write(uint32_t cpu_id, PageIndexT ppn, void * buf) {
-    memcpy(main_mem.data() + (ppn * PAGE_LEN_BYTE), buf, PAGE_LEN_BYTE);
+    memcpy(main_mem.data() + ((ppn * PAGE_LEN_BYTE) - mem_base), buf, PAGE_LEN_BYTE);
 }
 void AtomicSMPCores::pxymem_page_copy(uint32_t cpu_id, PageIndexT dst, PageIndexT src) {
-    memcpy(main_mem.data() + (dst * PAGE_LEN_BYTE), main_mem.data() + (src * PAGE_LEN_BYTE), PAGE_LEN_BYTE);
+    memcpy(main_mem.data() + (dst * PAGE_LEN_BYTE - mem_base), main_mem.data() + (src * PAGE_LEN_BYTE - mem_base), PAGE_LEN_BYTE);
 }
 
 
@@ -202,16 +203,16 @@ bool AtomicSMPCores::_page_trans_and_check(uint32_t id, VirtAddrT vaddr, uint32_
         pte = iter->second;
     } else {
         if(is_sv48) {
-            memcpy(&pte, main_mem.data() + ((core.pgtable & (~0xfffUL)) + 8 * ((vaddr >> 39) & 0x1ffUL)), 8);
+            memcpy(&pte, main_mem.data() + ((core.pgtable & (~0xfffUL)) + 8 * ((vaddr >> 39) & 0x1ffUL) - mem_base), 8);
             if(!(pte & PTE_V)) return false;
-            memcpy(&pte, main_mem.data() + (((pte & (~0x3ffUL)) << 2) + 8 * ((vaddr >> 30) & 0x1ffUL)), 8);
+            memcpy(&pte, main_mem.data() + (((pte & (~0x3ffUL)) << 2) + 8 * ((vaddr >> 30) & 0x1ffUL) - mem_base), 8);
         } else {
-            memcpy(&pte, main_mem.data() + ((core.pgtable & (~0xfffUL)) + 8 * ((vaddr >> 30) & 0x1ffUL)), 8);
+            memcpy(&pte, main_mem.data() + ((core.pgtable & (~0xfffUL)) + 8 * ((vaddr >> 30) & 0x1ffUL) - mem_base), 8);
         }
         if(!(pte & PTE_V)) return false;
-        memcpy(&pte, main_mem.data() + (((pte & (~0x3ffUL)) << 2) + 8 * ((vaddr >> 21) & 0x1ffUL)), 8);
+        memcpy(&pte, main_mem.data() + (((pte & (~0x3ffUL)) << 2) + 8 * ((vaddr >> 21) & 0x1ffUL) - mem_base), 8);
         if(!(pte & PTE_V)) return false;
-        memcpy(&pte, main_mem.data() + (((pte & (~0x3ffUL)) << 2) + 8 * ((vaddr >> 12) & 0x1ffUL)), 8);
+        memcpy(&pte, main_mem.data() + (((pte & (~0x3ffUL)) << 2) + 8 * ((vaddr >> 12) & 0x1ffUL) - mem_base), 8);
         if(!(pte & PTE_V)) return false;
         tlb[vidx] = pte;
     }
@@ -261,14 +262,14 @@ void AtomicSMPCores::_on_cur_simcore(uint32_t id) {
         if(!_page_trans_and_check(id, inst.pc, PTE_X, &ppc)) {
             RAISE_ITR(ITR_INST_PGFAULT, inst.pc);
         }
-        raw_inst = *((uint16_t*)(main_mem.data() + ppc));
+        raw_inst = *((uint16_t*)(main_mem.data() + ppc - mem_base));
 
         if(!isa::isRVC(raw_inst)) {
             PhysAddrT nppc = 0;
             if(!_page_trans_and_check(id, inst.pc+2, PTE_X, &nppc)) {
                 RAISE_ITR(ITR_INST_PGFAULT, inst.pc+2);
             }
-            raw_inst |= (*((uint16_t*)(main_mem.data() + nppc)) << 16);
+            raw_inst |= (*((uint16_t*)(main_mem.data() + nppc - mem_base)) << 16);
         }
 
         if(!isa::decode_rv64(raw_inst, &inst)) {
@@ -332,12 +333,12 @@ void AtomicSMPCores::_on_cur_simcore(uint32_t id) {
             if(iter == srlc.end() || iter->second != id) {
                 ret = 1;
             } else {
-                memcpy(main_mem.data() + paddr, &data, len);
+                memcpy(main_mem.data() + (paddr - mem_base), &data, len);
             }
             srlc.erase(paddr & (~0x3fUL));
         }
         else if(inst.param.amo.op == isa::RV64AMOOP5::LR) {
-            memcpy(&ret, main_mem.data() + paddr, len);
+            memcpy(&ret, main_mem.data() + (paddr - mem_base), len);
             srlc[paddr & (~0x3fUL)] = id;
             if(len == 4) {
                 RAW_DATA_AS(ret).i64 = RAW_DATA_AS(ret).i32;
@@ -347,14 +348,14 @@ void AtomicSMPCores::_on_cur_simcore(uint32_t id) {
             IntDataT previous = 0;
             IntDataT stvalue = 0;
             IntDataT value = data;
-            memcpy(&previous, main_mem.data() + paddr, len);
+            memcpy(&previous, main_mem.data() + (paddr - mem_base), len);
             if(len == 4) {
                 RAW_DATA_AS(ret).i64 = RAW_DATA_AS(ret).i32;
             }
             if(SimError::success != isa::perform_amo_op(inst.param.amo, &stvalue, previous, value)) {
                 RAISE_ITR(ITR_ILLEGAL_INST, raw_inst);
             }
-            memcpy(main_mem.data() + paddr, &stvalue, len);
+            memcpy(main_mem.data() + (paddr - mem_base), &stvalue, len);
             ret = previous;
             srlc.erase(paddr & (~0x3fUL));
         }
@@ -371,7 +372,7 @@ void AtomicSMPCores::_on_cur_simcore(uint32_t id) {
         if(!_page_trans_and_check(id, vaddr, PTE_R, &paddr)) {
             RAISE_ITR(ITR_LD_PGFAULT, vaddr);
         }
-        memcpy(&buf, main_mem.data() + paddr, len);
+        memcpy(&buf, main_mem.data() + (paddr - mem_base), len);
         switch (inst.param.loadstore)
         {
         case isa::RV64LSWidth::byte : RAW_DATA_AS(ret).i64 = *((int8_t*)(&buf)); break;
@@ -399,7 +400,7 @@ void AtomicSMPCores::_on_cur_simcore(uint32_t id) {
         if(!_page_trans_and_check(id, vaddr, PTE_W, &paddr)) {
             RAISE_ITR(ITR_ST_PGFAULT, vaddr);
         }
-        memcpy(main_mem.data() + paddr, &buf, len);
+        memcpy(main_mem.data() + (paddr - mem_base), &buf, len);
         LOG_INST("%s -> 0x%lx to @0x%lx (0x%lx)", inst.debug_name_str.c_str(), buf, vaddr, paddr);
     }
     else if(inst.opcode == RV64OPCode::opimm) {

@@ -18,7 +18,7 @@ class AtomicSMPCores : public CPUGroupInterface, public SimObject {
 
 public:
 
-    AtomicSMPCores(uint32_t core_num, uint64_t mem_size);
+    AtomicSMPCores(uint32_t core_num, PhysAddrT mem_base, uint64_t mem_size);
     ~AtomicSMPCores();
 
     virtual void halt(uint32_t cpu_id);
@@ -78,6 +78,7 @@ typedef struct {
 
     vector<CoreState> cores;
 
+    PhysAddrT mem_base;
     vector<uint8_t> main_mem;
 
     unordered_map<PhysAddrT, uint32_t> srlc;
