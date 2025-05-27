@@ -5,6 +5,7 @@ import chisel3._
 import chisel3.util._
 
 class NulCPUBundle extends Bundle {
+    val inited          = Input (Bool())
     val priv            = Input (UInt(2.W))     // 核心实时的特权级状态（U:0, S:1, M:3）
     val ext_itr         = Output(Bool())        // 拉高时：触发核心外部中断
     val stop_fetch      = Output(Bool())        // 拉高时：核心停止向后端发送取到的指令，后端仅能接受由inst64接口注入的指令
@@ -38,9 +39,10 @@ class NulCPUCtrl() extends Module {
     io.tx.valid := false.B 
     io.tx.bits := 0.U 
 
-    val CPU_HALT = 0.U 
-    val CPU_ITR  = 1.U 
-    val CPU_USER = 2.U 
+    val CPU_INIT = 0.U 
+    val CPU_HALT = 1.U 
+    val CPU_ITR  = 2.U 
+    val CPU_USER = 3.U 
     val cpu_state = RegInit(0.U(2.W))
 
     io.cpu.ext_itr := false.B
@@ -67,7 +69,7 @@ class NulCPUCtrl() extends Module {
         eq_valid := true.B 
         cpu_state := CPU_ITR
     }
-    io.cpu.stop_fetch := (cpu_state =/= CPU_USER) || (last_priv === 0.U && io.cpu.priv =/= 0.U)
+    io.cpu.stop_fetch := (cpu_state === CPU_ITR) || (cpu_state === CPU_HALT) || (last_priv === 0.U && io.cpu.priv =/= 0.U)
     
     val is_sv48 = false
 
@@ -125,7 +127,7 @@ class NulCPUCtrl() extends Module {
     val oparg = RegInit(VecInit(Seq.fill(16)(0.U(8.W))))
     val retarg = RegInit(VecInit(Seq.fill(16)(0.U(8.W))))
 
-    when(state === STATE_INIT_WAIT && io.cpu.priv === 3.U) {
+    when(state === STATE_INIT_WAIT && io.cpu.inited) {
         state := STATE_DO_INIT
     }
 
@@ -346,6 +348,7 @@ class NulCPUCtrl() extends Module {
         when(cnt(5)) {
             cnt := 1.U 
             state := STATE_RECV_HEAD
+            cpu_state := CPU_HALT
         }
     }
 
