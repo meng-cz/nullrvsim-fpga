@@ -166,16 +166,15 @@ class NulCPUCtrl() extends Module {
     when(state === STATE_RECV_ARG && trans_bytes === trans_pos) {
         trans_bytes := 0.U
         trans_pos := 0.U
+        state := STATE_SEND_HEAD
         switch(opcode) {
             is(SEROP_NEXT) { state := STATE_WAIT_NEXT }
             is(SEROP_HALT) {
                 io.cpu.ext_itr := true.B
                 cpu_state := CPU_HALT
-                state := STATE_SEND_HEAD
             }
             is(SEROP_ITR) {
                 io.cpu.ext_itr := true.B
-                state := STATE_SEND_HEAD
             }
             is(SEROP_MMU) { state := STATE_MMU }
             is(SEROP_REDIR) { state := STATE_REDIR }
@@ -191,7 +190,6 @@ class NulCPUCtrl() extends Module {
             is(SEROP_PGWT) { state := STATE_PGWT }
             is(SEROP_PGCP) { state := STATE_PGCP }
             is(SEROP_CLK) {
-                state := STATE_SEND_HEAD
                 for(i <- 0 to 7) {
                     retarg(i) := global_clk(i*8+7, i*8)
                 }
