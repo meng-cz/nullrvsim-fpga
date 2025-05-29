@@ -1,3 +1,6 @@
 generated 
 target
 _test*
+.*
+project/project 
+project/metals.*
