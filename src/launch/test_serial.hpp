@@ -8,7 +8,7 @@ bool test_serial_1(string dev_path) {
 
     uint32_t baudrate = conf::get_int("serial", "baudrate", 115200);
 
-    uint64_t mem_base = conf::get_inthex("root", "memory_base_addr", 0);
+    uint64_t mem_base = conf::get_inthex("root", "memory_base_addr_hex", 0);
     simroot_assert((mem_base % PAGE_LEN_BYTE) == 0);
 
     SerialFPGAAdapter * dev = new SerialFPGAAdapter(dev_path, baudrate);
@@ -39,7 +39,7 @@ bool test_serial_2(string dev_path) {
 
     uint32_t baudrate = conf::get_int("serial", "baudrate", 115200);
 
-    uint64_t mem_base = conf::get_inthex("root", "memory_base_addr", 0);
+    uint64_t mem_base = conf::get_inthex("root", "memory_base_addr_hex", 0);
     simroot_assert((mem_base % PAGE_LEN_BYTE) == 0);
 
     SerialFPGAAdapter * dev = new SerialFPGAAdapter(dev_path, baudrate);
@@ -83,7 +83,7 @@ bool test_serial_3(string dev_path) {
 
     uint32_t baudrate = conf::get_int("serial", "baudrate", 115200);
 
-    uint64_t mem_base = conf::get_inthex("root", "memory_base_addr", 0);
+    uint64_t mem_base = conf::get_inthex("root", "memory_base_addr_hex", 0);
     simroot_assert((mem_base % PAGE_LEN_BYTE) == 0);
 
     SerialFPGAAdapter * dev = new SerialFPGAAdapter(dev_path, baudrate);
@@ -133,31 +133,28 @@ bool test_serial_4(string dev_path) {
 
     uint32_t baudrate = conf::get_int("serial", "baudrate", 115200);
 
-    uint64_t mem_base = conf::get_inthex("root", "memory_base_addr", 0);
+    uint64_t mem_base = conf::get_inthex("root", "memory_base_addr_hex", 0);
     simroot_assert((mem_base % PAGE_LEN_BYTE) == 0);
 
     SerialFPGAAdapter * dev = new SerialFPGAAdapter(dev_path, baudrate);
 
     printf("Test 4 Start\n");
 
-    vector<uint32_t> bufs;
-    bufs.resize(1024, 0x13);
+    printf("Clear Page 0x82000 - 0x82003\n");
+    dev->pxymem_page_set(0, 0x82000UL, 0);
+    dev->pxymem_page_set(0, 0x82001UL, 0);
+    dev->pxymem_page_set(0, 0x82002UL, 0);
+    dev->pxymem_page_set(0, 0x82003UL, 0);
 
-    printf("Clear Page 0x80000 - 0x80003\n");
-    dev->pxymem_page_set(0, 0x80000UL, 0);
-    dev->pxymem_page_set(0, 0x80001UL, 0);
-    dev->pxymem_page_set(0, 0x80002UL, 0);
-    dev->pxymem_page_set(0, 0x80003UL, 0);
-
-    printf("Init PageTable of VPage 0x10000 -> 0x80003\n");
+    printf("Init PageTable of VPage 0x10000 -> 0x82003\n");
     
-    dev->pxymem_write(0, 0x80000000UL + 8 * ((0x10000UL >> 18) & 0x1ff), (0x80001UL << 10) + 1);
-    dev->pxymem_write(0, 0x80001000UL + 8 * ((0x10000UL >> 9) & 0x1ff), (0x80002UL << 10) + 1);
-    dev->pxymem_write(0, 0x80002000UL + 8 * ((0x10000UL) & 0x1ff), (0x80003UL << 10) + 0xdf);
-    dev->pxymem_write(0, 0x80003000UL, 0x06400893UL | (0x00000073UL << 32));
+    dev->pxymem_write(0, 0x82000000UL + 8 * ((0x10000UL >> 18) & 0x1ff), (0x82001UL << 10) + 1);
+    dev->pxymem_write(0, 0x82001000UL + 8 * ((0x10000UL >> 9) & 0x1ff), (0x82002UL << 10) + 1);
+    dev->pxymem_write(0, 0x82002000UL + 8 * ((0x10000UL) & 0x1ff), (0x82003UL << 10) + 0xdf);
+    dev->pxymem_write(0, 0x82003000UL, 0x06400893UL | (0x00000073UL << 32));
 
     printf("Setup MMU\n");
-    dev->set_mmu(0, 0x80000000UL, 0);
+    dev->set_mmu(0, 0x82000000UL, 0);
 
     printf("Flush TLB\n");
     dev->flush_tlb_all(0);
@@ -195,7 +192,7 @@ bool test_serial_5(string dev_path) {
 
     uint32_t baudrate = conf::get_int("serial", "baudrate", 115200);
 
-    uint64_t mem_base = conf::get_inthex("root", "memory_base_addr", 0);
+    uint64_t mem_base = conf::get_inthex("root", "memory_base_addr_hex", 0);
     simroot_assert((mem_base % PAGE_LEN_BYTE) == 0);
 
     SerialFPGAAdapter * dev = new SerialFPGAAdapter(dev_path, baudrate);
