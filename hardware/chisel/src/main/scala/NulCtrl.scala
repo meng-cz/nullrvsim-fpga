@@ -30,6 +30,7 @@ class NulCPUCtrl() extends Module {
     io.cpu.regacc_wdata := 0.U 
     io.cpu.inst64 := false.B 
     io.cpu.inst64_raw := 0.U 
+    io.cpu.inst64_nowait := false.B 
     io.cpu.inst64_flush := false.B 
 
     val global_clk = RegInit(0.U(64.W))
@@ -437,7 +438,10 @@ class NulCPUCtrl() extends Module {
         when(cnt(9)) { invoke_inst("h0330000f".U) } // fence rw, rw
         when(cnt(10)) { wait_inst() }
         recover_regs(11, 2)
-        when(cnt(13)) { invoke_inst("h30200073".U) } // mret
+        when(cnt(13)) {
+            io.cpu.inst64_nowait := true.B
+            invoke_inst("h30200073".U)
+        } // mret
         when(cnt(14)) {
             io.cpu.inst64_flush := true.B 
             cnt := (cnt << 1)

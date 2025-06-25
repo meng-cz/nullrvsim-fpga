@@ -19,6 +19,7 @@ class NulCPUBundle extends Bundle {
 
     val inst64          = Output(Bool())        // 拉高时：向后端注入一条RV64指令（M模式），仅包含OP, OPIMM, LD, SD, CSR, MRET
     val inst64_raw      = Output(UInt(32.W))    // 指令二进制
+    val inst64_nowait   = Output(Bool())
     val inst64_ready    = Input (Bool())        // 拉高时：后端可以接受一条指令
     val inst64_flush    = Output(Bool())        // 拉高时：等待所有指令执行完成
     val inst64_busy     = Input (Bool())        // 拉高时：后端存在至少一条正在执行的指令
