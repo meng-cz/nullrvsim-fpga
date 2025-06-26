@@ -275,8 +275,8 @@ bool test_serial_6(string dev_path) {
 
     PageIndexT inst_pg = ppman->alloc();
     PageIndexT data_pg = ppman->alloc();
-    VPageIndexT inst_vpn = 0x10UL;
-    VPageIndexT data_vpn = 0x20UL;
+    VPageIndexT inst_vpn = 0x20UL;
+    VPageIndexT data_vpn = 0x10UL;
 
     pt->pt_insert(inst_vpn, (inst_pg << 10) | PTE_LEAF_V | PTE_R | PTE_X, &stlist);
     pt->pt_insert(data_vpn, (data_pg << 10) | PTE_LEAF_V | PTE_R | PTE_W, &stlist);
@@ -307,7 +307,7 @@ bool test_serial_6(string dev_path) {
     }
 
     printf("Setup MMU\n");
-    dev->set_mmu(0, 0x82000000UL, 0);
+    dev->set_mmu(0, pt_base, 0);
 
     printf("Flush TLB\n");
     dev->flush_tlb_all(0);
@@ -320,8 +320,8 @@ bool test_serial_6(string dev_path) {
         if(getchar() == '1') break;
     } while(true);
 
-    printf("\nRedirect to VAddr 0x10000000\n");
-    dev->redirect(0, 0x10000000UL);
+    printf("\nRedirect to VAddr 0x%lx\n", inst_vpn << 12);
+    dev->redirect(0, inst_vpn << 12);
 
     uint32_t cpuid = 0;
     VirtAddrT pc = 0;
