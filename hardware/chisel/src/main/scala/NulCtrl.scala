@@ -108,6 +108,7 @@ class NulCPUCtrl() extends Module {
 
     when(state === STATE_INIT_WAIT && io.cpu.inited) {
         state := STATE_DO_INIT
+        cpu_state := CPU_HALT
     }
 
     when(state === STATE_RECV_HEAD && io.rx.valid) {
@@ -318,14 +319,14 @@ class NulCPUCtrl() extends Module {
 
     when(state === STATE_DO_INIT) {
         when(cnt(0)) { write_reg(2, def_pmp_cfg) }
-        when(cnt(1)) { write_reg(3, def_pmp_addr) }
-        when(cnt(2)) { invoke_inst("h3a039073".U) } // csrrw x0, pmpcfg0, x7
-        when(cnt(3)) { invoke_inst("h3b041073".U) } // csrrw x0, pmpaddr0, x8
-        when(cnt(4)) { wait_inst() }
-        when(cnt(5)) {
+        when(cnt(1)) { write_reg(2, def_pmp_cfg) }
+        when(cnt(2)) { write_reg(3, def_pmp_addr) }
+        when(cnt(3)) { invoke_inst("h3a039073".U) } // csrrw x0, pmpcfg0, x7
+        when(cnt(4)) { invoke_inst("h3b041073".U) } // csrrw x0, pmpaddr0, x8
+        when(cnt(5)) { wait_inst() }
+        when(cnt(6)) {
             cnt := 1.U 
             state := STATE_RECV_HEAD
-            cpu_state := CPU_HALT
         }
     }
 

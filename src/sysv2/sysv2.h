@@ -294,7 +294,7 @@ protected:
     SYSCALL_CLAIM_V2(261, prlimit);
     SYSCALL_CLAIM_V2(278, getrandom);
     
-    VirtAddrT _page_fault_rx(uint32_t cpu_id, VirtAddrT pc, VirtAddrT badaddr);
+    VirtAddrT _page_fault_rx(uint32_t cpu_id, VirtAddrT pc, VirtAddrT badaddr, bool isx);
     VirtAddrT _page_fault_w(uint32_t cpu_id, VirtAddrT pc, VirtAddrT badaddr);
 
 

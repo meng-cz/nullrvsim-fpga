@@ -53,6 +53,10 @@ SMPSystemV2::SMPSystemV2(SimWorkload &workload, CPUGroupInterface *cpus, uint32_
     printf("Init at %ld Ticks\n", cpus->get_current_tick());
     printf("Init Simulation System With Entry 0x%lx, Stack 0x%lx\n", entry, sp);
 
+    for(int i = 0; i < cpu_num; i++) {
+        cpus->sync_inst_stream(i);
+    }
+
     insert_ready_thread_and_execute(init_thread, 0);
 
 }
@@ -795,8 +799,10 @@ void SMPSystemV2::run_sim() {
             }
             break;
         case ITR_INST_PGFAULT:
+            nextpc = _page_fault_rx(cpu_id, pc, arg, true);
+            break;
         case ITR_LD_PGFAULT:
-            nextpc = _page_fault_rx(cpu_id, pc, arg);
+            nextpc = _page_fault_rx(cpu_id, pc, arg, false);
             break;
         case ITR_ST_PGFAULT:
             nextpc = _page_fault_w(cpu_id, pc, arg);
@@ -2218,7 +2224,7 @@ SYSCALL_DEFINE_V2(278, getrandom) {
     ECALL_RET(ret, pc+4);
 }
 
-VirtAddrT SMPSystemV2::_page_fault_rx(uint32_t cpu_id, VirtAddrT pc, VirtAddrT badaddr) {
+VirtAddrT SMPSystemV2::_page_fault_rx(uint32_t cpu_id, VirtAddrT pc, VirtAddrT badaddr, bool isx) {
     VPageIndexT vpn = (badaddr >> PAGE_ADDR_OFFSET);
 
     PTET pte = CURT->pgtable->pt_get(vpn, nullptr);
@@ -2239,7 +2245,7 @@ VirtAddrT SMPSystemV2::_page_fault_rx(uint32_t cpu_id, VirtAddrT pc, VirtAddrT b
         return pc;
     }
 
-    printf("%ld: Segment Fault on CPU %d: Read/Execute 0x%lx @0x%lx\n", cpus->get_current_tick(), cpu_id, badaddr, pc);
+    printf("%ld: Segment Fault on CPU %d: %s 0x%lx @0x%lx\n", cpus->get_current_tick(), cpu_id, (isx?"Execute":"Read"), badaddr, pc);
     simroot_assert(0);
     return 0;
 }
