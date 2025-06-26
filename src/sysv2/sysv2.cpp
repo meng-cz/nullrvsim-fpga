@@ -66,8 +66,8 @@ VirtAddrT SMPSystemV2::_pop_context_and_execute(uint32_t cpu_id) {
     ThreadV2 *thread = running_threads[cpu_id];
 
     // Set MMU
-    cpus->set_mmu(cpu_id, thread->pgtable->get_page_table_base(), thread->asid);
-    cpus->flush_tlb_asid(cpu_id, thread->asid);
+    cpus->set_mmu(cpu_id, thread->pgtable->get_page_table_base(), 0);
+    cpus->flush_tlb_all(cpu_id);
 
     // Flush memory operation during waiting
     for(auto &st : thread->stlist_on_ready) {
