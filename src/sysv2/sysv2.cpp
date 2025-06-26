@@ -1925,7 +1925,7 @@ SYSCALL_DEFINE_V2(214, brk) {
     VirtAddrT ret = CURT->pgtable->alloc_brk(arg0, &stlist);
     if(!stlist.empty()) {
         for(auto &st : stlist) _perform_target_memset(cpu_id, st); 
-        cpus->flush_tlb_asid(cpu_id, CURT->asid);
+        cpus->flush_tlb_all(cpu_id);
     }
     
     LOG_SYSCALL_1("brk", "0x%lx", arg0, "0x%lx", ret);
@@ -1958,7 +1958,7 @@ SYSCALL_DEFINE_V2(215, munmap) {
     CURT->pgtable->free_mmap(vaddr, length, &stlist);
     if(!stlist.empty()) {
         for(auto &st : stlist) _perform_target_memset(cpu_id, st); 
-        cpus->flush_tlb_asid(cpu_id, CURT->asid);
+        cpus->flush_tlb_all(cpu_id);
     }
 
     LOG_SYSCALL_2("munmap", "0x%lx", IREG_V(a0), "0x%lx", IREG_V(a1), "%ld", 0UL);
@@ -2036,7 +2036,7 @@ SYSCALL_DEFINE_V2(220, clone) {
         _perform_target_memset(cpu_id, st);
     }
     if(!stlist.empty()) {
-        cpus->flush_tlb_asid(cpu_id, CURT->asid);
+        cpus->flush_tlb_all(cpu_id);
     }
 
     insert_ready_thread_and_execute(newthread, cpu_id);
@@ -2124,7 +2124,7 @@ SYSCALL_DEFINE_V2(222, mmap) {
 
     if(!stlist.empty()) {
         for(auto &st : stlist) _perform_target_memset(cpu_id, st); 
-        cpus->flush_tlb_asid(cpu_id, CURT->asid);
+        cpus->flush_tlb_all(cpu_id);
     }
 
     LOG_SYSCALL_6("mmap", "0x%lx", vaddr, "0x%lx", length, "0x%lx", prot, "0x%lx", flags, "%d", usr_fd, "0x%lx", offset, "0x%lx", ret);
@@ -2147,7 +2147,7 @@ SYSCALL_DEFINE_V2(226, mprotect) {
 
     if(!stlist.empty()) {
         for(auto &st : stlist) _perform_target_memset(cpu_id, st); 
-        cpus->flush_tlb_asid(cpu_id, CURT->asid);
+        cpus->flush_tlb_all(cpu_id);
     }
 
     LOG_SYSCALL_3("mprotect", "0x%lx", vaddr, "0x%lx", length, "0x%lx", prot, "%ld", 0UL);
