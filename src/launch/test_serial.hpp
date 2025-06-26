@@ -4,6 +4,9 @@
 #include "configuration.h"
 #include "simroot.h"
 
+#include "sysv2/pagetablev2.h"
+#include "sysv2/pagememv2.h"
+
 bool test_serial_1(string dev_path) {
 
     uint32_t baudrate = conf::get_int("serial", "baudrate", 115200);
@@ -159,11 +162,6 @@ bool test_serial_4(string dev_path) {
     printf("Flush TLB\n");
     dev->flush_tlb_all(0);
 
-    printf("Start ILA Trigger, and Type \"1\" to Continue...\n");
-    do {
-        if(getchar() == '1') break;
-    } while(true);
-
     printf("\nFence-I\n");
     dev->sync_inst_stream(0);
     
@@ -197,7 +195,7 @@ bool test_serial_5(string dev_path) {
 
     SerialFPGAAdapter * dev = new SerialFPGAAdapter(dev_path, baudrate);
 
-    printf("Test 4 Start\n");
+    printf("Test 5 Start\n");
 
     printf("Random DDR RW Test on 0x%lx\n", mem_base);
     uint64_t mem_size = (1UL << 30);
@@ -228,4 +226,119 @@ bool test_serial_5(string dev_path) {
     return true;
 }
 
+void _target_memst(SerialFPGAAdapter *dev, TgtMemSet64 &st) {
+    if(st.dwords == PAGE_LEN_BYTE/8 && !(st.base & (PAGE_LEN_BYTE - 1))) {
+        if(st.multivalue.size() == st.dwords) {
+            dev->pxymem_page_write(0, st.base >> PAGE_ADDR_OFFSET, st.multivalue.data());
+            printf("Page Write @0x%lx\n", st.base >> PAGE_ADDR_OFFSET);
+        } else {
+            dev->pxymem_page_set(0, st.base >> PAGE_ADDR_OFFSET, st.value);
+            printf("Page Set @0x%lx: 0x%lx\n", st.base >> PAGE_ADDR_OFFSET, st.value);
+        }
+    } else {
+        if(st.multivalue.size() == st.dwords) {
+            for(uint64_t i = 0; i < st.dwords; i++) {
+                dev->pxymem_write(0, st.base + i * 8, st.multivalue[i]);
+                printf("Mem Write @0x%lx: 0x%lx\n", st.base + i * 8, st.multivalue[i]);
+            }
+        } else {
+            for(uint64_t i = 0; i < st.dwords; i++) {
+                dev->pxymem_write(0, st.base + i * 8, st.value);
+                printf("Mem Write @0x%lx: 0x%lx\n", st.base + i * 8, st.value);
+            }
+        }
+    }
+}
+
+bool test_serial_6(string dev_path) {
+    
+    uint32_t baudrate = conf::get_int("serial", "baudrate", 115200);
+
+    uint64_t mem_base = conf::get_inthex("root", "memory_base_addr_hex", 0);
+    simroot_assert((mem_base % PAGE_LEN_BYTE) == 0);
+
+    SerialFPGAAdapter * dev = new SerialFPGAAdapter(dev_path, baudrate);
+
+    const uint64_t test_data = 0x1122334455667788UL;
+
+    printf("Test 6 Start\n");
+
+    TgtMemSetList stlist;
+
+    unique_ptr<PhysPageAllocatorV2> ppman = make_unique<PhysPageAllocatorV2>(mem_base, 512UL * 1024UL * 1024UL);
+
+    unique_ptr<PageTable4K> pt = make_unique<PageTable4K>(PTType::SV39, ppman.get(), &stlist);
+
+    PhysAddrT pt_base = pt->get_page_table_base();
+
+    printf("Init test pagetable on physical address 0x%lx\n", pt_base);
+
+    PageIndexT inst_pg = ppman->alloc();
+    PageIndexT data_pg = ppman->alloc();
+    VPageIndexT inst_vpn = 0x10UL;
+    VPageIndexT data_vpn = 0x20UL;
+
+    pt->pt_insert(inst_vpn, (inst_pg << 10) | PTE_LEAF_V | PTE_R | PTE_X, &stlist);
+    pt->pt_insert(data_vpn, (data_pg << 10) | PTE_LEAF_V | PTE_R | PTE_W, &stlist);
+
+    vector<uint32_t> insts;
+    insts.push_back(0x000102b7U); // lui	t0,0x10
+    insts.push_back(0x0002b503U); // ld	a0,0(t0) # 10000
+    insts.push_back(0x06400893U); // li	a7,100
+    insts.push_back(0x00000073U); // ecall
+    for(int i = 0; i < 12; i++) {
+        insts.push_back(0x00000013U);
+    }
+
+    stlist.emplace_back();
+    stlist.back().base = (inst_pg << 12);
+    stlist.back().dwords = insts.size()/2;
+    stlist.back().value = 0;
+    stlist.back().multivalue.assign(insts.size()/2, 0);
+    memcpy(stlist.back().multivalue.data(), insts.data(), (insts.size()/2)*8);
+
+    stlist.emplace_back();
+    stlist.back().base = (data_pg << 12);
+    stlist.back().dwords = insts.size()/2;
+    stlist.back().value = test_data;
+
+    for(auto &st : stlist) {
+        _target_memst(dev, st);
+    }
+
+    printf("Setup MMU\n");
+    dev->set_mmu(0, 0x82000000UL, 0);
+
+    printf("Flush TLB\n");
+    dev->flush_tlb_all(0);
+
+    printf("\nFence-I\n");
+    dev->sync_inst_stream(0);
+    
+    printf("Start ILA Trigger, and Type \"1\" to Continue...\n");
+    do {
+        if(getchar() == '1') break;
+    } while(true);
+
+    printf("\nRedirect to VAddr 0x10000000\n");
+    dev->redirect(0, 0x10000000UL);
+
+    uint32_t cpuid = 0;
+    VirtAddrT pc = 0;
+    uint32_t cause = 0;
+    uint64_t arg = 0;
+    assert(dev->next(&cpuid, &pc, &cause, &arg));
+
+    printf("Got Event on CPU %d, @0x%lx, Cause %d, Arg 0x%lx\n", cpuid, pc, cause, arg);
+
+    printf("A7 Value: 0x%lx, A0 Value: 0x%lx\n",
+        dev->regacc_read(0, isa::ireg_index_of("a7")),
+        dev->regacc_read(0, isa::ireg_index_of("a0"))
+    );
+
+    printf("Test 6 PASSED\n");
+
+    return true;
+
+}
 
