@@ -260,6 +260,7 @@ bool test_serial_6(string dev_path) {
     SerialFPGAAdapter * dev = new SerialFPGAAdapter(dev_path, baudrate);
 
     const uint64_t test_data = 0x1122334455667788UL;
+    const uint64_t test_data2 = 0x8877665544332211UL;
 
     printf("Test 6 Start\n");
 
@@ -275,6 +276,7 @@ bool test_serial_6(string dev_path) {
 
     PageIndexT inst_pg = ppman->alloc();
     PageIndexT data_pg = ppman->alloc();
+    PageIndexT data_pg2 = ppman->alloc();
     VPageIndexT inst_vpn = 0x20UL;
     VPageIndexT data_vpn = 0x10UL;
 
@@ -299,8 +301,14 @@ bool test_serial_6(string dev_path) {
 
     stlist.emplace_back();
     stlist.back().base = (data_pg << 12);
-    stlist.back().dwords = insts.size()/2;
+    stlist.back().dwords = 1;
     stlist.back().value = test_data;
+
+    stlist.emplace_back();
+    stlist.back().base = (data_pg2 << 12);
+    stlist.back().dwords = 1;
+    stlist.back().value = test_data2;
+
 
     for(auto &st : stlist) {
         _target_memst(dev, st);
@@ -327,6 +335,36 @@ bool test_serial_6(string dev_path) {
     VirtAddrT pc = 0;
     uint32_t cause = 0;
     uint64_t arg = 0;
+    assert(dev->next(&cpuid, &pc, &cause, &arg));
+
+    printf("Got Event on CPU %d, @0x%lx, Cause %d, Arg 0x%lx\n", cpuid, pc, cause, arg);
+
+    printf("A7 Value: 0x%lx, A0 Value: 0x%lx\n",
+        dev->regacc_read(0, isa::ireg_index_of("a7")),
+        dev->regacc_read(0, isa::ireg_index_of("a0"))
+    );
+
+    printf("Now update page table for data segments\n");
+
+    stlist.clear();
+    
+    pt->pt_update(data_vpn, (data_pg2 << 10) | PTE_LEAF_V | PTE_R | PTE_W, &stlist);
+
+    for(auto &st : stlist) {
+        _target_memst(dev, st);
+    }
+
+    printf("Flush TLB\n");
+    dev->flush_tlb_all(0);
+
+    printf("Start ILA Trigger, and Type \"1\" to Continue...\n");
+    do {
+        if(getchar() == '1') break;
+    } while(true);
+
+    printf("\nRedirect to VAddr 0x%lx\n", inst_vpn << 12);
+    dev->redirect(0, inst_vpn << 12);
+
     assert(dev->next(&cpuid, &pc, &cause, &arg));
 
     printf("Got Event on CPU %d, @0x%lx, Cause %d, Arg 0x%lx\n", cpuid, pc, cause, arg);
