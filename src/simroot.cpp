@@ -51,6 +51,14 @@ void add_trace_object(TraceObject * obj, std::string name) {
     trace_objects.emplace_back(name, obj);
 }
 
+void debug_trace_object(bool debug_on) {
+    if(simroot_isinit) {
+        for(auto &entry : trace_objects) {
+            entry.second->set_debug(debug_on);
+        }
+    }
+}
+
 void add_sim_object(SimObject *p_obj, std::string name) {
     init_simroot();
     sim_objects.emplace_back(name, p_obj);

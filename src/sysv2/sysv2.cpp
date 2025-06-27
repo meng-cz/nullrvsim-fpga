@@ -46,16 +46,25 @@ SMPSystemV2::SMPSystemV2(SimWorkload &workload, CPUGroupInterface *cpus, uint32_
     thread_groups[init_thread->tgid].push_back(init_thread->tid);
     thread_objs.emplace(init_thread->tid, init_thread);
 
-    printf("Init Target Memory: (0/%ld)", stlist.size());
+    uint64_t total_set_sz = 0, current_set_sz = 0;
+    for(auto &st : stlist) {
+        total_set_sz += st.dwords * 8;
+    }
+    printf("Init Target Memory: (0/%ld) KB", total_set_sz / 1024);
     for(int i = 0; i < stlist.size(); i++) {
         _perform_target_memset(0, stlist[i]);
-        printf("\rInit Target Memory: (%d/%ld)", i+1, stlist.size());
+        current_set_sz += stlist[i].dwords * 8;
+        printf("\rInit Target Memory: (%ld/%ld) KB", current_set_sz / 1024, total_set_sz / 1024);
         fflush(stdout);
     }
     printf("\n");
 
     printf("Init at %ld Ticks\n", cpus->get_current_tick());
     printf("Init Simulation System With Entry 0x%lx, Stack 0x%lx\n", entry, sp);
+
+    if(conf::get_int("root", "debug_runtime", 0)) {
+        simroot::debug_trace_object(true);
+    }
 
     for(int i = 0; i < cpu_num; i++) {
         cpus->sync_inst_stream(i);

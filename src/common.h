@@ -212,6 +212,7 @@ public:
 
 class TraceObject {
 public:
+    virtual void set_debug(bool on) {};
     virtual void clear_statistic() {};
     virtual void print_statistic(std::ofstream &ofile) {};
     virtual void print_setup_info(std::ofstream &ofile) {};

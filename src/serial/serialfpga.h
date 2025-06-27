@@ -64,6 +64,7 @@ public:
     virtual uint64_t get_current_tick();
 
     virtual void dump_core(std::ofstream &ofile);
+    virtual void set_debug(bool on) { debug_op = on; };
 
 private:
 
@@ -80,6 +81,7 @@ private:
     int64_t _pop_int(BufT &buf, uint64_t bytes);
 
     int32_t dbg = 0;
+    bool debug_op = false;
 };
 
 
