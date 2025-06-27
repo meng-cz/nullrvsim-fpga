@@ -224,24 +224,6 @@ class NulCPUCtrl() extends Module {
         state := STATE_NEXT
     }
 
-    val satp_back = RegInit(0.U(64.W))
-
-    when(state === STATE_MMU) {
-        val satp_mode = if(is_sv48) 9.U(4.W) else 8.U(4.W)
-        satp_back := Cat(
-            satp_mode,
-            oparg(3),
-            oparg(2),
-            (0.U(4.W)),
-            oparg(8),
-            oparg(7),
-            oparg(6),
-            oparg(5),
-            oparg(4)
-        )
-        state := STATE_SEND_HEAD
-    }
-
     val cnt = RegInit(1.U(128.W))
     val regback = RegInit(VecInit(Seq.fill(10)(0.U(64.W))))
 
@@ -339,6 +321,31 @@ class NulCPUCtrl() extends Module {
         }
     }
 
+    val satp_mode = if(is_sv48) 9.U(4.W) else 8.U(4.W)
+    val satp_value = Cat(
+            satp_mode,
+            oparg(3),
+            oparg(2),
+            (0.U(4.W)),
+            oparg(8),
+            oparg(7),
+            oparg(6),
+            oparg(5),
+            oparg(4)
+        )
+
+    when(state === STATE_MMU) {
+        backup_regs(0, 1)
+        when(cnt(1)) { write_reg(0, satp_value) }
+        when(cnt(2)) { invoke_inst("h18029073".U) } // csrrw x0, satp, x5
+        when(cnt(3)) { wait_inst() }
+        recover_regs(4, 1)
+        when(cnt(5)) {
+            cnt := 1.U 
+            state := STATE_SEND_HEAD
+        }
+    }
+
     when(state === STATE_FLUSH) {
         when(cnt(0)) { invoke_inst("b00010010000000000000000001110011".U) } // sfence.vma x0, x0
         when(cnt(1)) { wait_inst() }
@@ -416,11 +423,8 @@ class NulCPUCtrl() extends Module {
         when(cnt(7)) { read_reg_to_retarg(0, 2, 1) }
         when(cnt(8)) { read_reg_to_retarg(1, 3, 6) }
         when(cnt(9)) { read_reg_to_retarg(2, 9, 6) }
-        when(cnt(10)) { invoke_inst("h180012f3".U) } // csrrw x5, satp, x0
-        when(cnt(11)) { wait_inst() }
-        when(cnt(12)) { read_reg(0, satp_back) }
-        recover_regs(13, 3)
-        when(cnt(16)) {
+        recover_regs(10, 3)
+        when(cnt(13)) {
             cnt := 1.U 
             state := STATE_SEND_HEAD
         }
@@ -428,27 +432,25 @@ class NulCPUCtrl() extends Module {
 
     when(state === STATE_REDIR) {
         backup_regs(0, 2)
-        when(cnt(2)) { write_reg(0, satp_back) }
-        when(cnt(3)) { write_reg_from_oparg(1, 2, 6) }
-        when(cnt(4)) { invoke_inst("h18029073".U) } // csrrw x0, satp, x5
-        when(cnt(5)) { invoke_inst("h34131073".U) } // csrrw x0, mepc, x6
+        when(cnt(2)) { write_reg_from_oparg(1, 2, 6) }
+        when(cnt(3)) { invoke_inst("h34131073".U) } // csrrw x0, mepc, x6
         // Clear MPP Bits (mstatus[12:11]) to return U mode
-        when(cnt(6)) { invoke_inst("h00300293".U) } // addi x5, x0, 3
-        when(cnt(7)) { invoke_inst("h00b29293".U) } // slli x5, x5, 11
-        when(cnt(8)) { invoke_inst("h3002b073".U) } // csrrc x0, mstatus, x5
-        when(cnt(9)) { invoke_inst("h0330000f".U) } // fence rw, rw
-        when(cnt(10)) { wait_inst() }
-        recover_regs(11, 2)
-        when(cnt(13)) {
+        when(cnt(4)) { invoke_inst("h00300293".U) } // addi x5, x0, 3
+        when(cnt(5)) { invoke_inst("h00b29293".U) } // slli x5, x5, 11
+        when(cnt(6)) { invoke_inst("h3002b073".U) } // csrrc x0, mstatus, x5
+        when(cnt(7)) { invoke_inst("h0330000f".U) } // fence rw, rw
+        when(cnt(8)) { wait_inst() }
+        recover_regs(9, 2)
+        when(cnt(11)) {
             io.cpu.inst64_nowait := true.B
             invoke_inst("h30200073".U)
         } // mret
-        when(cnt(14)) {
+        when(cnt(12)) {
             io.cpu.inst64_flush := true.B 
             cnt := (cnt << 1)
             cpu_state := CPU_USER
         }
-        when(cnt(15)) {
+        when(cnt(13)) {
             cnt := 1.U 
             state := STATE_SEND_HEAD
         }
