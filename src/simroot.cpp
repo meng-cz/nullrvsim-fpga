@@ -6,6 +6,7 @@
 
 namespace simroot {
 
+
 typedef struct {
     std::ofstream *ofile = nullptr;
     std::list<string> buf;
@@ -26,6 +27,8 @@ inline void log_file_close(LogFile *p) {
 vector<std::pair<string, SimObject*>> sim_objects;
 std::set<LogFile*> logfiles;
 
+vector<std::pair<string, TraceObject*>> trace_objects;
+
 void int_signal_handler(int signum) {
     printf("Recieve SIGINT\n");
     dump_core();
@@ -41,6 +44,11 @@ void init_simroot() {
         signal(SIGINT, int_signal_handler);
     }
     simroot_isinit = true;
+}
+
+void add_trace_object(TraceObject * obj, std::string name) {
+    init_simroot();
+    trace_objects.emplace_back(name, obj);
 }
 
 void add_sim_object(SimObject *p_obj, std::string name) {
@@ -63,6 +71,11 @@ void print_statistic() {
             entry.second->print_statistic(statistic_log_file);
             statistic_log_file << std::endl;
         }
+        for(auto &entry : trace_objects) {
+            statistic_log_file << entry.first << std::string("\n");
+            entry.second->print_statistic(statistic_log_file);
+            statistic_log_file << std::endl;
+        }
         statistic_log_file.close();
     }
 }
@@ -70,6 +83,9 @@ void print_statistic() {
 void clear_statistic() {
     if(simroot_isinit) {
         for(auto &entry : sim_objects) {
+            entry.second->clear_statistic();
+        }
+        for(auto &entry : trace_objects) {
             entry.second->clear_statistic();
         }
     }
@@ -81,6 +97,12 @@ void dump_core() {
     std::ofstream ofile(path);
 
     for(auto &entry: sim_objects) {
+        ofile << entry.first << ":\n";
+        entry.second->dump_core(ofile);
+        ofile << std::endl;
+    }
+
+    for(auto &entry: trace_objects) {
         ofile << entry.first << ":\n";
         entry.second->dump_core(ofile);
         ofile << std::endl;

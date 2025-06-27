@@ -9,6 +9,8 @@
 
 namespace simroot {
 
+void add_trace_object(TraceObject * obj, std::string name);
+
 // --------- 模拟对象管理 ------------
 
 void add_sim_object(SimObject *p_obj, std::string name);

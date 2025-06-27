@@ -30,7 +30,7 @@ using simcpu::CPUGroupInterface;
 
 typedef vector<uint8_t> BufT;
 
-class SerialFPGAAdapter : public CPUGroupInterface {
+class SerialFPGAAdapter : public CPUGroupInterface, public TraceObject {
 
 public:
 
@@ -62,6 +62,8 @@ public:
     virtual void pxymem_page_copy(uint32_t cpu_id, PageIndexT dst, PageIndexT src);
 
     virtual uint64_t get_current_tick();
+
+    virtual void dump_core(std::ofstream &ofile);
 
 private:
 

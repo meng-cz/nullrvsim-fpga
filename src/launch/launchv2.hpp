@@ -82,6 +82,7 @@ bool mpser(string devpath, vector<string> &argv) {
     uint32_t baudrate = conf::get_int("serial", "baudrate", 115200);
 
     shared_ptr<SerialFPGAAdapter> hardwares = make_shared<SerialFPGAAdapter>(devpath, baudrate);
+    simroot::add_trace_object(hardwares.get(), "FPGA");
     
     shared_ptr<SMPSystemV2> sys = make_shared<SMPSystemV2>(workload, hardwares.get(), cpu_num, mem_base, mem_size);
 

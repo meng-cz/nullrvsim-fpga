@@ -210,5 +210,13 @@ public:
     std::vector<string> ldpaths;
 };
 
+class TraceObject {
+public:
+    virtual void clear_statistic() {};
+    virtual void print_statistic(std::ofstream &ofile) {};
+    virtual void print_setup_info(std::ofstream &ofile) {};
+    virtual void dump_core(std::ofstream &ofile) {};
+};
+
 #endif
 

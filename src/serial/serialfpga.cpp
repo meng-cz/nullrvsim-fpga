@@ -298,3 +298,19 @@ uint64_t SerialFPGAAdapter::get_current_tick() {
     simroot_assertf(SEROP_CLK == value, "Operation Clock Failed: %d", value);
     return _pop_int(ret, 8);
 }
+
+void SerialFPGAAdapter::dump_core(std::ofstream &ofile) {
+    char logbuf[256];
+    uint32_t cpu_num = conf::get_int("root", "core_num", 1);
+    for(uint32_t i = 0; i < cpu_num; i++) {
+        sprintf(logbuf, "CPU %d Regs:\n", i);
+        ofile << logbuf;
+        for(uint32_t r = 0; r < RV_REG_CNT_INT; r+=2) {
+            sprintf(logbuf, "%02d-%s: 0x%16lx, %02d-%s: 0x%16lx\n",
+                r, isa::ireg_name(r), (r?regacc_read(i, r):0),
+                r+1, isa::ireg_name(r+1), regacc_read(i, r+1)
+            );
+            ofile << logbuf;
+        }
+    }
+}
