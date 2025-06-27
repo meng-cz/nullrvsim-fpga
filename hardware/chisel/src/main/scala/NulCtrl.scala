@@ -444,11 +444,13 @@ class NulCPUCtrl() extends Module {
         when(cnt(11)) {
             io.cpu.inst64_nowait := true.B
             invoke_inst("h30200073".U)
+            when(io.cpu.inst64_ready) {
+                cpu_state := CPU_USER
+            }
         } // mret
         when(cnt(12)) {
             io.cpu.inst64_flush := true.B 
             cnt := (cnt << 1)
-            cpu_state := CPU_USER
         }
         when(cnt(13)) {
             cnt := 1.U 

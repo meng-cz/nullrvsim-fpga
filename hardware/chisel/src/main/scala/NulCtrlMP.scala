@@ -484,11 +484,13 @@ class NulCPUCtrlMP(cpunum: Int) extends Module {
         when(cnt(11)) {
             sel_cpu.inst64_nowait := true.B
             invoke_inst("h30200073".U)
+            when(sel_cpu.inst64_ready) {
+                cpu_state(opidx) := CPU_USER
+            }
         } // mret
         when(cnt(12)) {
             sel_cpu.inst64_flush := true.B 
             cnt := (cnt << 1)
-            cpu_state(opidx) := CPU_USER
         }
         when(cnt(13)) {
             cnt := 1.U 
