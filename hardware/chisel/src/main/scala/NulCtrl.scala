@@ -599,7 +599,7 @@ class NulCPUCtrl() extends Module {
             when(pgbuf_cpu_pos === 448.U) {
                 cnt := (cnt << 1)
             }.otherwise {
-                cnt := (7.U << 1)
+                cnt := (1.U << 11)
             }
             pgbuf_cpu_pos := pgbuf_cpu_pos + 64.U
         }
