@@ -13,6 +13,7 @@ bool test_serial_1(string dev_path) {
 
     uint64_t mem_base = conf::get_inthex("root", "memory_base_addr_hex", 0);
     simroot_assert((mem_base % PAGE_LEN_BYTE) == 0);
+    simroot_assert(mem_base >= 0x80000000UL);
 
     SerialFPGAAdapter * dev = new SerialFPGAAdapter(dev_path, baudrate);
 
@@ -44,6 +45,7 @@ bool test_serial_2(string dev_path) {
 
     uint64_t mem_base = conf::get_inthex("root", "memory_base_addr_hex", 0);
     simroot_assert((mem_base % PAGE_LEN_BYTE) == 0);
+    simroot_assert(mem_base >= 0x80000000UL);
 
     SerialFPGAAdapter * dev = new SerialFPGAAdapter(dev_path, baudrate);
 
@@ -88,6 +90,7 @@ bool test_serial_3(string dev_path) {
 
     uint64_t mem_base = conf::get_inthex("root", "memory_base_addr_hex", 0);
     simroot_assert((mem_base % PAGE_LEN_BYTE) == 0);
+    simroot_assert(mem_base >= 0x80000000UL);
 
     SerialFPGAAdapter * dev = new SerialFPGAAdapter(dev_path, baudrate);
 
@@ -125,7 +128,12 @@ bool test_serial_3(string dev_path) {
     pgrd.assign(512, 0);
     printf("Read Page 0x8004_0\n");
     dev->pxymem_page_read(0, 0x80040UL, pgrd.data());
-    for(uint64_t i = 0; i < 512; i++) assert(pgrd[i] == pg[i]);
+    for(uint64_t i = 0; i < 512; i++) {
+        if(pgrd[i] != pg[i]) {
+            printf("Addr 0x%lx, Request 0x%lx, but Read 0x%lx\n", 0x80040000UL + i * 8, pg[i], pgrd[i]);
+            return false;
+        }
+    }
     
     printf("Test 3 PASSED\n");
 
@@ -138,6 +146,7 @@ bool test_serial_4(string dev_path) {
 
     uint64_t mem_base = conf::get_inthex("root", "memory_base_addr_hex", 0);
     simroot_assert((mem_base % PAGE_LEN_BYTE) == 0);
+    simroot_assert(mem_base >= 0x80000000UL);
 
     SerialFPGAAdapter * dev = new SerialFPGAAdapter(dev_path, baudrate);
 
@@ -344,6 +353,8 @@ bool test_serial_6(string dev_path) {
         dev->regacc_read(0, isa::ireg_index_of("a0"))
     );
 
+    simroot_assert(dev->regacc_read(0, isa::ireg_index_of("a0")) == test_data);
+
     printf("Now update page table for data segments\n");
 
     stlist.clear();
@@ -373,6 +384,8 @@ bool test_serial_6(string dev_path) {
         dev->regacc_read(0, isa::ireg_index_of("a7")),
         dev->regacc_read(0, isa::ireg_index_of("a0"))
     );
+
+    simroot_assert(dev->regacc_read(0, isa::ireg_index_of("a0")) == test_data2);
 
     printf("Test 6 PASSED\n");
 
@@ -404,6 +417,16 @@ bool test_serial_mem(string dev_path) {
     }
     printf("\n");
 
+    printf("The register value should be unchanged\n");
+    
+    for(int i = 1; i < 32; i++) {
+        uint64_t rd = dev->regacc_read(0, i);
+        if(rd != i) {
+            printf("Register %d: Required 0x%d, but Read 0x%lx\n", i, i, rd);
+            return false;
+        }
+    }
+    
     printf("Set another 128 pages as dynamic data\n(128/256)");
     vector<uint64_t> datas;
     datas.assign(512, 0);
@@ -417,6 +440,16 @@ bool test_serial_mem(string dev_path) {
     }
     printf("\n");
 
+    printf("The register value should be unchanged\n");
+    
+    for(int i = 1; i < 32; i++) {
+        uint64_t rd = dev->regacc_read(0, i);
+        if(rd != i) {
+            printf("Register %d: Required 0x%d, but Read 0x%lx\n", i, i, rd);
+            return false;
+        }
+    }
+    
     printf("Now read the fixed data\n(0/128)");
     for(uint64_t i = 0; i < 128; i++) {
         printf("\r(%ld/128)", i);
@@ -440,7 +473,7 @@ bool test_serial_mem(string dev_path) {
         for(uint64_t n = 0; n < 512; n++) {
             uint64_t addr = mem_base + (i * 4096) + (n * 8);
             uint64_t rd = datas[n];
-            if(rd != test_data) {
+            if(rd != addr) {
                 printf("\nAddr 0x%lx: Required 0x%lx, but Read 0x%lx\n", addr, addr, rd);
                 return false;
             }
