@@ -380,3 +380,85 @@ bool test_serial_6(string dev_path) {
 
 }
 
+bool test_serial_mem(string dev_path) {
+
+    uint32_t baudrate = conf::get_int("serial", "baudrate", 115200);
+
+    uint64_t mem_base = conf::get_inthex("root", "memory_base_addr_hex", 0);
+    simroot_assert((mem_base % PAGE_LEN_BYTE) == 0);
+
+    SerialFPGAAdapter * dev = new SerialFPGAAdapter(dev_path, baudrate);
+
+    printf("Test memory start\n");
+
+    for(int i = 1; i < 32; i++) {
+        dev->regacc_write(0, i, i);
+    }
+
+    printf("Set 128 pages as fixed data\n(0/128)");
+    const uint64_t test_data = 0x1122334455667788UL;
+    for(uint64_t i = 0; i < 128; i++) {
+        printf("\r(%ld/128)", i);
+        fflush(stdout);
+        dev->pxymem_page_set(0, (mem_base >> 12) + i, test_data);
+    }
+    printf("\n");
+
+    printf("Set another 128 pages as dynamic data\n(128/256)");
+    vector<uint64_t> datas;
+    datas.assign(512, 0);
+    for(uint64_t i = 128; i < 256; i++) {
+        printf("\r(%ld/256)", i);
+        fflush(stdout);
+        for(uint64_t n = 0; n < 512; n++) {
+            datas[n] = mem_base + (i * 4096) + (n * 8);
+        }
+        dev->pxymem_page_write(0, (mem_base >> 12) + i, datas.data());
+    }
+    printf("\n");
+
+    printf("Now read the fixed data\n(0/128)");
+    for(uint64_t i = 0; i < 128; i++) {
+        printf("\r(%ld/128)", i);
+        fflush(stdout);
+        for(uint64_t n = 0; n < 512; n++) {
+            uint64_t addr = mem_base + (i * 4096) + (n * 8);
+            uint64_t rd = dev->pxymem_read(0, addr);
+            if(rd != test_data) {
+                printf("\nAddr 0x%lx: Required 0x%lx, but Read 0x%lx\n", addr, test_data, rd);
+                return false;
+            }
+        }
+    }
+    printf("\n");
+
+    printf("Now read the dynamic data\n(128/256)");
+    for(uint64_t i = 128; i < 256; i++) {
+        printf("\r(%ld/256)", i);
+        fflush(stdout);
+        dev->pxymem_page_read(0, (mem_base >> 12) + i, datas.data());
+        for(uint64_t n = 0; n < 512; n++) {
+            uint64_t addr = mem_base + (i * 4096) + (n * 8);
+            uint64_t rd = datas[n];
+            if(rd != test_data) {
+                printf("\nAddr 0x%lx: Required 0x%lx, but Read 0x%lx\n", addr, addr, rd);
+                return false;
+            }
+        }
+    }
+    printf("\n");
+
+    printf("The register value should be unchanged\n");
+    
+    for(int i = 1; i < 32; i++) {
+        uint64_t rd = dev->regacc_read(0, i);
+        if(rd != i) {
+            printf("Register %d: Required 0x%d, but Read 0x%lx\n", i, i, rd);
+            return false;
+        }
+    }
+    
+    printf("Test success\n");
+    return true;
+
+}
