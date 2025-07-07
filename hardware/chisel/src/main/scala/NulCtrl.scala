@@ -462,10 +462,11 @@ class NulCPUCtrl() extends Module {
         backup_regs(0, 2)
         when(cnt(2)) { write_reg_from_oparg(0, 2, 6) }
         when(cnt(3)) { invoke_inst("h0002b303".U) } // ld x6, 0(x5)
-        when(cnt(4)) { wait_inst() }
-        when(cnt(5)) { read_reg_to_retarg(1, 0, 8) }
-        recover_regs(6, 2)
-        when(cnt(8)) {
+        when(cnt(4)) { invoke_inst("h0330000f".U) } // fence rw, rw
+        when(cnt(5)) { wait_inst() }
+        when(cnt(6)) { read_reg_to_retarg(1, 0, 8) }
+        recover_regs(7, 2)
+        when(cnt(9)) {
             cnt := 1.U
             state := STATE_SEND_HEAD
         }
@@ -476,9 +477,10 @@ class NulCPUCtrl() extends Module {
         when(cnt(2)) { write_reg_from_oparg(0, 2, 6) }
         when(cnt(3)) { write_reg_from_oparg(1, 8, 8) }
         when(cnt(4)) { invoke_inst("h0062b023".U) } // sd x6, 0(x5)
-        when(cnt(5)) { wait_inst() }
-        recover_regs(6, 2)
-        when(cnt(8)) {
+        when(cnt(5)) { invoke_inst("h0330000f".U) } // fence rw, rw
+        when(cnt(6)) { wait_inst() }
+        recover_regs(7, 2)
+        when(cnt(9)) {
             cnt := 1.U
             state := STATE_SEND_HEAD
         }
@@ -521,8 +523,10 @@ class NulCPUCtrl() extends Module {
                 pg_loop_cnt := 0.U
             }
         }
-        recover_regs(15, 2)
-        when(cnt(17)) {
+        when(cnt(15)) { invoke_inst("h0330000f".U) } // fence rw, rw
+        when(cnt(16)) { wait_inst() }
+        recover_regs(17, 2)
+        when(cnt(19)) {
             cnt := 1.U
             state := STATE_SEND_HEAD
         }
@@ -560,8 +564,10 @@ class NulCPUCtrl() extends Module {
                 pg_loop_cnt := 0.U
             }
         }
-        recover_regs(32, 10)
-        when(cnt(42)) {
+        when(cnt(32)) { invoke_inst("h0330000f".U) } // fence rw, rw
+        when(cnt(33)) { wait_inst() }
+        recover_regs(34, 10)
+        when(cnt(44)) {
             cnt := 1.U
             state := STATE_SEND_HEAD
         }
@@ -603,8 +609,10 @@ class NulCPUCtrl() extends Module {
             }
             pgbuf_cpu_pos := pgbuf_cpu_pos + 64.U
         }
-        recover_regs(30, 9)
-        when(cnt(39)) {
+        when(cnt(30)) { invoke_inst("h0330000f".U) } // fence rw, rw
+        when(cnt(31)) { wait_inst() }
+        recover_regs(32, 9)
+        when(cnt(41)) {
             when(pgbuf_cpu_pos === pgbuf_uart_pos) {
                 cnt := 1.U 
                 state := STATE_RECV_HEAD
@@ -667,8 +675,10 @@ class NulCPUCtrl() extends Module {
             }
             pgbuf_cpu_pos := pgbuf_cpu_pos + 64.U
         }
-        recover_regs(30, 9)
-        when(cnt(39)) {
+        when(cnt(30)) { invoke_inst("h0330000f".U) } // fence rw, rw
+        when(cnt(31)) { wait_inst() }
+        recover_regs(32, 9)
+        when(cnt(41)) {
             cnt := 1.U 
             state := STATE_SEND_HEAD
             pgbuf_cpu_pos := 0.U 
