@@ -100,6 +100,9 @@ bool test_serial_3(string dev_path) {
     pg.assign(512, 0);
     for(uint64_t i = 0; i < 512; i++) pg[i] = i*8 + 0x4000UL;
 
+    printf("Start ILA trigger...\n");
+    while(getchar() != '1') ;
+
     printf("Write Page 0x8001_0\n");
     dev->pxymem_page_write(0, 0x80010UL, pg.data());
 
@@ -124,6 +127,9 @@ bool test_serial_3(string dev_path) {
     printf("Read 0x8004_0880\n");
     assert(0x4880UL == dev->pxymem_read(0, 0x80040880UL));
 
+    printf("Start ILA trigger...\n");
+    while(getchar() != '1') ;
+    
     vector<uint64_t> pgrd;
     pgrd.assign(512, 0);
     printf("Read Page 0x8004_0\n");

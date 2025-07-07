@@ -488,13 +488,13 @@ class NulCPUCtrl() extends Module {
     for(i <- 0 to 4) {
         _ppn_from_arg2(i) := oparg(2+i)
     }
-    val pg_base_addr2 = Cat((0.U(12.W)), _ppn_from_arg2.asUInt(), (0.U(12.W)))
+    val pg_base_addr2 = Cat((0.U(12.W)), oparg(6), oparg(5), oparg(4), oparg(3), oparg(2), (0.U(12.W)))
 
     val _ppn_from_arg7 = Wire(Vec(5, UInt(8.W)))
     for(i <- 0 to 4) {
         _ppn_from_arg7(i) := oparg(7+i)
     }
-    val pg_base_addr7 = Cat((0.U(12.W)), _ppn_from_arg7.asUInt(), (0.U(12.W)))
+    val pg_base_addr7 = Cat((0.U(12.W)), oparg(11), oparg(10), oparg(9), oparg(8), oparg(7), (0.U(12.W)))
 
     val pg_loop_cnt = RegInit(0.U(8.W))
 
@@ -589,7 +589,7 @@ class NulCPUCtrl() extends Module {
         when(cnt(15)) { invoke_inst("h0202b503".U) } // ld x10, 32(x5)
         when(cnt(16)) { invoke_inst("h0282b583".U) } // ld x11, 40(x5)
         when(cnt(17)) { invoke_inst("h0302b603".U) } // ld x12, 48(x5)
-        when(cnt(18)) { invoke_inst("h0382b603".U) } // ld x12, 56(x5)
+        when(cnt(18)) { invoke_inst("h0382b683".U) } // ld x13, 56(x5)
         when(cnt(19)) { invoke_inst("h04028293".U) } // addi x5, x5, 64
         when(cnt(20)) { wait_inst() }
         for(i <- 0 to 7) {
