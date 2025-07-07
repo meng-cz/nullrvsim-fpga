@@ -46,18 +46,7 @@ SMPSystemV2::SMPSystemV2(SimWorkload &workload, CPUGroupInterface *cpus, uint32_
     thread_groups[init_thread->tgid].push_back(init_thread->tid);
     thread_objs.emplace(init_thread->tid, init_thread);
 
-    uint64_t total_set_sz = 0, current_set_sz = 0;
-    for(auto &st : stlist) {
-        total_set_sz += st.dwords * 8;
-    }
-    printf("Init Target Memory: (0/%ld) KB", total_set_sz / 1024);
-    for(int i = 0; i < stlist.size(); i++) {
-        _perform_target_memset(0, stlist[i]);
-        current_set_sz += stlist[i].dwords * 8;
-        printf("\rInit Target Memory: (%ld/%ld) KB", current_set_sz / 1024, total_set_sz / 1024);
-        fflush(stdout);
-    }
-    printf("\n");
+    init_target_memory(stlist);
 
     printf("Init at %ld Ticks\n", cpus->get_current_tick());
     printf("Init Simulation System With Entry 0x%lx, Stack 0x%lx\n", entry, sp);
@@ -71,6 +60,78 @@ SMPSystemV2::SMPSystemV2(SimWorkload &workload, CPUGroupInterface *cpus, uint32_
     }
 
     insert_ready_thread_and_execute(init_thread, 0);
+
+}
+
+void SMPSystemV2::init_target_memory(TgtMemSetList &stlist) {
+
+    typedef struct {
+        bool full_init;
+        unordered_map<uint32_t, uint64_t> set_words;
+        vector<uint64_t> full_data;
+    } SetPage;
+
+    unordered_map<PageIndexT, SetPage> mod_pages;
+
+    uint64_t total_set_sz = 0, current_set_sz = 0;
+    for(auto &st : stlist) {
+        total_set_sz += st.dwords * 8;
+    }
+    printf("Init Target Memory: (0/%ld) KB", total_set_sz / 1024);
+    for(int i = 0; i < stlist.size(); i++) {
+        auto &st = stlist[i];
+        _perform_target_memset(0, stlist[i]);
+        current_set_sz += stlist[i].dwords * 8;
+        printf("\rInit Target Memory: (%ld/%ld) KB", current_set_sz / 1024, total_set_sz / 1024);
+        fflush(stdout);
+        
+        PageIndexT pg = (st.base >> 12);
+        uint64_t offset = (st.base & (PAGE_LEN_BYTE - 1));
+        auto iter = mod_pages.find(pg);
+        if(iter == mod_pages.end()) {
+            iter = mod_pages.emplace(pg, SetPage()).first;
+            iter->second.full_init = false;
+        }
+        if(st.dwords == PAGE_LEN_BYTE/8 && !offset) {
+            if(st.multivalue.size() == st.dwords) {
+                iter->second.full_init = true;
+                iter->second.full_data = st.multivalue;
+            } else {
+                iter->second.full_init = true;
+                iter->second.full_data.assign(PAGE_LEN_BYTE/8, st.value);
+            }
+        } else if (iter->second.full_init) {
+            iter->second.full_data[offset >> 3] = st.value;
+        } else {
+            iter->second.set_words.emplace(offset >> 3, st.value);
+        }
+    }
+    printf("\n");
+
+    uint64_t total_page = mod_pages.size(), cur_page = 0;
+    printf("Validate Target Memory: Page (%ld/%ld)", cur_page, total_page);
+    for(auto &entry : mod_pages) {
+        if(entry.second.full_init) {
+            vector<uint64_t> rd;
+            rd.assign(PAGE_LEN_BYTE/8, 0);
+            cpus->pxymem_page_read(0, entry.first, rd.data());
+            for(uint64_t i = 0; i < PAGE_LEN_BYTE/8; i++) {
+                simroot_assertf(rd[i] == entry.second.full_data[i], "Validation Failed @0x%lx: Required 0x%lx, but Read 0x%lx\n",
+                    entry.first * PAGE_LEN_BYTE + i * 8, entry.second.full_data[i], rd[i]);
+            }
+        } else {
+            for(auto &s : entry.second.set_words) {
+                uint64_t addr = entry.first * PAGE_LEN_BYTE + s.first * 8;
+                uint64_t rd = cpus->pxymem_read(0, addr);
+                simroot_assertf(rd == s.second, "Validation Failed @0x%lx: Required 0x%lx, but Read 0x%lx\n", addr, s.second, rd);
+            }
+        }
+
+        printf("\rValidate Target Memory: Page (%ld/%ld)", cur_page, total_page);
+        fflush(stdout);
+        cur_page ++;
+    }
+    printf("\n");
 
 }
 
@@ -381,15 +442,17 @@ void SMPSystemV2::_perform_target_memset(uint32_t cpu_id, TgtMemSet64 &st) {
             cpus->pxymem_page_set(cpu_id, st.base >> PAGE_ADDR_OFFSET, st.value);
         }
     } else {
-        if(st.multivalue.size() == st.dwords) {
-            for(uint64_t i = 0; i < st.dwords; i++) {
-                cpus->pxymem_write(cpu_id, st.base + i * 8, st.multivalue[i]);
-            }
-        } else {
-            for(uint64_t i = 0; i < st.dwords; i++) {
-                cpus->pxymem_write(cpu_id, st.base + i * 8, st.value);
-            }
-        }
+        simroot_assertf((st.dwords == 1) && !(st.base & 7), "Bad target memset on 0x%lx with length %ld dwords", st.base, st.dwords);
+        // if(st.multivalue.size() == st.dwords) {
+        //     for(uint64_t i = 0; i < st.dwords; i++) {
+        //         cpus->pxymem_write(cpu_id, st.base + i * 8, st.multivalue[i]);
+        //     }
+        // } else {
+        //     for(uint64_t i = 0; i < st.dwords; i++) {
+        //         cpus->pxymem_write(cpu_id, st.base + i * 8, st.value);
+        //     }
+        // }
+        cpus->pxymem_write(cpu_id, st.base, st.value);
     }
 }
 

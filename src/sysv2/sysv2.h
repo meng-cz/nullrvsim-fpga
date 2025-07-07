@@ -43,6 +43,8 @@ public:
 
 protected:
 
+    void init_target_memory(TgtMemSetList &stlist);
+    
     void _perform_target_memset(uint32_t cpu_id, TgtMemSet64 &st);
     void _perform_target_pagecpy(uint32_t cpu_id, TgtPgCpy &cp);
 
@@ -241,10 +243,6 @@ protected:
         sockrecvmsg_wait_threads.erase(thread);
         waiting_threads.erase(thread);
     }
-
-
-
-    
 
 
 
