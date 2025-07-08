@@ -44,7 +44,7 @@ public:
 protected:
 
     void init_target_memory(TgtMemSetList &stlist);
-    
+
     void _perform_target_memset(uint32_t cpu_id, TgtMemSet64 &st);
     void _perform_target_pagecpy(uint32_t cpu_id, TgtPgCpy &cp);
 
@@ -57,6 +57,7 @@ protected:
 
 
     bool has_init = false;
+    bool has_hard_fp = false;
 
     PhysPageAllocatorV2 *ppman;
 

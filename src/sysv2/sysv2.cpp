@@ -27,6 +27,8 @@ SMPSystemV2::SMPSystemV2(SimWorkload &workload, CPUGroupInterface *cpus, uint32_
     
     running_threads.assign(cpu_num, nullptr);
 
+    has_hard_fp = conf::get_int("root", "hard_fp", 1);
+
     TgtMemSetList stlist;
 
     ppman = new PhysPageAllocatorV2(membase, memsz);
@@ -152,7 +154,8 @@ VirtAddrT SMPSystemV2::_pop_context_and_execute(uint32_t cpu_id) {
     // Recover registers
     RVRegArray context = thread->context_stack.back();
     thread->context_stack.pop_back();
-    for(uint32_t i = 1; i < context.size(); i++) {
+    uint32_t regnum = (has_hard_fp?64:32);
+    for(uint32_t i = 1; i < regnum; i++) {
         cpus->regacc_write(cpu_id, i, context[i]);
     }
 
@@ -169,7 +172,8 @@ void SMPSystemV2::_push_context_stack(uint32_t cpu_id, VirtAddrT nextpc) {
 
     thread->context_stack.emplace_back();
     RVRegArray &context = thread->context_stack.back();
-    for(uint32_t i = 1; i < context.size(); i++) {
+    uint32_t regnum = (has_hard_fp?64:32);
+    for(uint32_t i = 1; i < regnum; i++) {
         context[i] = cpus->regacc_read(cpu_id, i);
     }
     context[0] = nextpc;
