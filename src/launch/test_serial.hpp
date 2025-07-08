@@ -159,7 +159,8 @@ bool test_serial_4(string dev_path) {
     dev->pxymem_write(0, 0x82000000UL + 8 * ((0x10000UL >> 18) & 0x1ff), (0x82001UL << 10) + 1);
     dev->pxymem_write(0, 0x82001000UL + 8 * ((0x10000UL >> 9) & 0x1ff), (0x82002UL << 10) + 1);
     dev->pxymem_write(0, 0x82002000UL + 8 * ((0x10000UL) & 0x1ff), (0x82003UL << 10) + 0xdf);
-    dev->pxymem_write(0, 0x82003000UL, 0x06400893UL | (0x00000073UL << 32));
+    dev->pxymem_write(0, 0x82003000UL, 0x01000293UL | (0xf2028053UL << 32));
+    dev->pxymem_write(0, 0x82003008UL, 0x06400893UL | (0x00000073UL << 32));
 
     printf("Setup MMU\n");
     dev->set_mmu(0, 0x82000000UL, 0);
