@@ -410,7 +410,7 @@ bool test_serial_mem(string dev_path) {
     for(uint64_t i = 0; i < 128; i++) {
         printf("\r(%ld/128)", i);
         fflush(stdout);
-        dev->pxymem_page_set(0, (mem_base >> 12) + i, test_data);
+        dev->pxymem_page_set(0, (mem_base >> 12) + i, (mem_base >> 12) + i);
     }
     printf("\n");
 
@@ -454,8 +454,9 @@ bool test_serial_mem(string dev_path) {
         for(uint64_t n = 0; n < 512; n++) {
             uint64_t addr = mem_base + (i * 4096) + (n * 8);
             uint64_t rd = dev->pxymem_read(0, addr);
-            if(rd != test_data) {
-                printf("\nAddr 0x%lx: Required 0x%lx, but Read 0x%lx\n", addr, test_data, rd);
+            uint64_t tgt = (mem_base >> 12) + i;
+            if(rd != tgt) {
+                printf("\nAddr 0x%lx: Required 0x%lx, but Read 0x%lx\n", addr, tgt, rd);
                 return false;
             }
         }
@@ -484,6 +485,40 @@ bool test_serial_mem(string dev_path) {
         uint64_t rd = dev->regacc_read(0, i);
         if(rd != i) {
             printf("Register %d: Required 0x%d, but Read 0x%lx\n", i, i, rd);
+            return false;
+        }
+    }
+
+    printf("Now randomly change some value\n");
+    
+    std::unordered_map<uint64_t, uint64_t> sts;
+    vector<uint64_t> tgtmem;
+    tgtmem.assign(128*512, 0);
+    for(uint64_t i = 0; i < 128; i++) {
+        for(uint64_t n = 0; n < 512; n++) {
+            tgtmem[n + i*512] = (mem_base >> 12) + i;
+        }
+    }
+
+    uint64_t mem_size = 128*4096UL;
+    
+    for(int i = 0; i < 100; i++) {
+        uint64_t addr = (ALIGN(rand_long(), 8) % mem_size) + mem_base;
+        uint64_t data = rand_long();
+        dev->pxymem_write(0, addr, data);
+        tgtmem[(addr - mem_base) / 8] = data;
+    }
+
+    printf("Now read the fixed data\n(0/65536)");
+    for(uint64_t i = 0; i < 65536; i++) {
+        if((i % 512) == 0) {
+            printf("\r(%ld/65536)", i);
+            fflush(stdout);
+        }
+        uint64_t addr = mem_base + (i * 8);
+        uint64_t rd = dev->pxymem_read(0, addr);
+        if(rd != tgtmem[i]) {
+            printf("\nAddr 0x%lx: Required 0x%lx, but Read 0x%lx\n", addr, tgtmem[i], rd);
             return false;
         }
     }
