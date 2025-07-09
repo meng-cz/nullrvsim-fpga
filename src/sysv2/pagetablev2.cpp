@@ -476,13 +476,37 @@ VirtAddrT ThreadPageTableV2::alloc_brk(VirtAddrT brk, TgtMemSetList *stlist) {
         ret = brk_va;
     }
     else {
+        simroot_assertf(!(brk & 7), "Brk with unaligned value 0x%lx", brk);
         VPageIndexT vpindex = CEIL_DIV(brk_va, PAGE_LEN_BYTE);
         uint64_t vpcnt = CEIL_DIV(brk, PAGE_LEN_BYTE) - vpindex;
         for(VPageIndexT vpn = vpindex; vpn < vpindex + vpcnt; vpn++) {
             PageIndexT ppn = ppman->alloc();
             pt->pt_insert(vpn, (ppn << 10) | (PTE_LEAF_V | PTE_W | PTE_R), stlist);
         }
-        brk_va = brk;
+        while(brk_va < brk) {
+            VirtAddrT page_end = ALIGN(brk_va + 1, PAGE_LEN_BYTE);
+            uint64_t end = std::min<uint64_t>(brk, page_end);
+            PTET pte = pt->pt_get(brk_va >> PAGE_ADDR_OFFSET, nullptr);
+            simroot_assert(pte & PTE_V);
+            PhysAddrT page_base = ((pte >> 10) << 12);
+            if(brk_va & (PAGE_LEN_BYTE - 1)) {
+                for(uint64_t i = brk_va; i < end; i+=8) {
+                    stlist->emplace_back();
+                    auto &st = stlist->back();
+                    st.base = page_base + (i & (PAGE_LEN_BYTE - 1));
+                    st.dwords = 1;
+                    st.value = 0;
+                }
+            } else {
+                stlist->emplace_back();
+                auto &st = stlist->back();
+                st.base = page_base;
+                st.dwords = (PAGE_LEN_BYTE / 8);
+                st.value = 0;
+            }
+            brk_va = end;
+        }
+        simroot_assert(brk_va == brk);
         ret = brk_va;
     }
     return ret;
