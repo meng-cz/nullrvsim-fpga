@@ -3,9 +3,22 @@
 
 #include "common.h"
 
-#define simroot_assert(expr) {if(!(static_cast <bool> (expr))) [[unlikely]] { simroot::dump_core(); printf("Failed %s, at file %s, line %d\n", #expr, __FILE__, __LINE__); fflush(stdout); exit(-1);}}
+#define simroot_assert(expr) do { \
+    if(!(static_cast <bool> (expr))) [[unlikely]] { \
+        simroot::dump_core(); \
+        printf("Failed %s, at file %s, line %d\n", #expr, __FILE__, __LINE__); \
+        fflush(stdout); \
+        abort(); \
+    }} while(0)
 
-#define simroot_assertf(expr, fmt, ...) {if(!(static_cast <bool> (expr))) [[unlikely]] { simroot::dump_core(); printf(fmt "\n", ##__VA_ARGS__); printf("Failed %s, at file %s, line %d\n", #expr, __FILE__, __LINE__); fflush(stdout); exit(-1);}}
+#define simroot_assertf(expr, fmt, ...) do { \
+    if(!(static_cast <bool> (expr))) [[unlikely]] { \
+        simroot::dump_core(); \
+        printf(fmt "\n", ##__VA_ARGS__); \
+        printf("Failed %s, at file %s, line %d\n", #expr, __FILE__, __LINE__); \
+        fflush(stdout); \
+        abort(); \
+    }} while(0)
 
 namespace simroot {
 

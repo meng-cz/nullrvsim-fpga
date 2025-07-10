@@ -10,15 +10,23 @@ ThreadPageTableV2::ThreadPageTableV2(PTType pt_type, PhysPageAllocatorV2 *ppman,
     
     this->ppman = ppman;
 
+    if(pt_type == PTType::SV39) {
+        MIN_MMAP_VADDR = 0x400000000UL;
+        MAX_MMAP_VADDR = 0xe00000000UL;
+        MAX_VADDR = 0xf00000000UL;
+    } else if(pt_type == PTType::SV48) {
+        MIN_MMAP_VADDR = 0x40000000000UL;
+        MAX_MMAP_VADDR = 0xe0000000000UL;
+        MAX_VADDR = 0xf0000000000UL;
+    }
+
     pt = make_unique<PageTable4K>(pt_type, ppman,stlist);
+    mmap_table = make_unique<VirtMemSegTable>(MIN_MMAP_VADDR >> PAGE_ADDR_OFFSET, MAX_MMAP_VADDR >> PAGE_ADDR_OFFSET);
 }
 
 ThreadPageTableV2::~ThreadPageTableV2() {
     TgtMemSetList tmp;
-    while(!mmap_segments.empty()) {
-        auto &back = mmap_segments.back();
-        free_mmap(back.vpindex * PAGE_LEN_BYTE, back.vpcnt * PAGE_LEN_BYTE, &tmp);
-    }
+    free_mmap(MIN_MMAP_VADDR, MAX_MMAP_VADDR - MIN_MMAP_VADDR, &tmp);
 }
 
 ThreadPageTableV2::ThreadPageTableV2(ThreadPageTableV2 *parent, TgtMemSetList *stlist) {
@@ -26,22 +34,12 @@ ThreadPageTableV2::ThreadPageTableV2(ThreadPageTableV2 *parent, TgtMemSetList *s
     this->ppman = parent->ppman;
 
     vector<std::pair<VPageIndexT, VPageIndexT>> shared_interval;
-    for(auto &vseg : parent->mmap_segments) {
-        if(vseg.flag & PGFLAG_SHARE) {
-            shared_interval.emplace_back(vseg.vpindex, vseg.vpindex + vseg.vpcnt);
-        }
-    }
+
+    // copy mmap segments
+    mmap_table = make_unique<VirtMemSegTable>(parent->mmap_table.get(), shared_interval);
 
     // fork entire page table
-    pt = make_unique<PageTable4K>(parent->pt.get(), shared_interval,stlist);
-
-    // Copy mmap segments
-    this->mmap_segments = parent->mmap_segments;
-    for(auto &seg : this->mmap_segments) {
-        if(seg.fd) {
-            seg.fd->ref_cnt++;
-        }
-    }
+    pt = make_unique<PageTable4K>(parent->pt.get(), shared_interval, stlist);
 
     this->brk_va = parent->brk_va;
     this->dyn_brk_va = parent->dyn_brk_va;
@@ -57,26 +55,23 @@ VirtAddrT ThreadPageTableV2::alloc_mmap_fixed(VirtAddrT addr, uint64_t size, Pag
 
     VPageIndexT vpi = (addr >> PAGE_ADDR_OFFSET);
     VPageIndexT vpi2 = (ALIGN(addr + size, PAGE_LEN_BYTE) >> PAGE_ADDR_OFFSET);
-    if((vpi << PAGE_ADDR_OFFSET) <= brk_va) {
-        return 0;
+    simroot_assertf(MIN_MMAP_VADDR > brk_va, "Virtual Memory Space RUN OUT : Heap overhead");
+    if(vpi * PAGE_LEN_BYTE < MIN_MMAP_VADDR || vpi2 * PAGE_LEN_BYTE >= MAX_MMAP_VADDR) {
+        simroot_assertf(0, "Bad MMAP Range @0x%lx, len 0x%lx", addr, size);
     }
     
     free_mmap(addr, size, stlist);
 
-    {
-        auto iter = mmap_segments.begin();
-        for(; iter != mmap_segments.end(); iter++) {
-            if(iter->vpindex + iter->vpcnt <= vpi) break;
-        }
-        mmap_segments.emplace(iter, VirtSeg{
-            .vpindex = vpi,
-            .vpcnt = vpi2 - vpi,
-            .info = info,
-            .flag = flag,
-            .fd = fd,
-            .offset = offset
-        });
-    }
+    VMSegInfo seg;
+    seg.vpindex = vpi;
+    seg.vpcnt = vpi2 - vpi;
+    seg.info = info;
+    seg.flag = flag;
+    seg.fd = fd;
+    seg.offset = offset;
+
+    mmap_table->insert(seg);
+    
 
     uint32_t pte_flgs = PTE_LEAF_V;
     if(flag & PGFLAG_R) pte_flgs |= PTE_R;
@@ -130,20 +125,7 @@ VirtAddrT ThreadPageTableV2::alloc_mmap(uint64_t size, PageFlagT flag, FileDescr
     simroot_assert(size);
     
     uint64_t vpcnt = (ALIGN(size, PAGE_LEN_BYTE) >> PAGE_ADDR_OFFSET);
-    VPageIndexT top = (MAX_MMAP_VADDR >> PAGE_ADDR_OFFSET);
-
-    auto iter = mmap_segments.begin();
-    for(; iter != mmap_segments.end(); iter++) {
-        if(iter->vpindex + iter->vpcnt + vpcnt <= top) {
-            break;
-        }
-        top = iter->vpindex;
-    }
-    VPageIndexT vpindex = top - vpcnt;
-    if((vpindex << PAGE_ADDR_OFFSET) <= brk_va) {
-        LOG(ERROR) << "Virt Addr Space Run out";
-        simroot_assert(0);
-    }
+    VPageIndexT vpindex = mmap_table->find_pos(vpcnt);
 
     return alloc_mmap_fixed(vpindex << PAGE_ADDR_OFFSET, size, flag, fd, offset, info, stlist);
 }
@@ -155,52 +137,27 @@ void ThreadPageTableV2::free_mmap(VirtAddrT addr, uint64_t size, TgtMemSetList *
     simroot_assert(size);
 
     VPageIndexT vpi = (addr >> PAGE_ADDR_OFFSET);
-    VPageIndexT vpi2 = (ALIGN(addr + size, PAGE_LEN_BYTE) >> PAGE_ADDR_OFFSET);
-    for(auto iter = mmap_segments.begin(); iter != mmap_segments.end(); ) {
-        VPageIndexT i = iter->vpindex, i2 = iter->vpindex + iter->vpcnt;
-        if(i >= vpi2 || i2 <= vpi) {
-            iter++;
-            continue;
-        }
-        if(vpi > i && vpi2 < i2) {
-            VirtSeg tmp = *iter;
-            iter->vpcnt = vpi - i;
-            tmp.vpindex = vpi2; // tmp is higher addr
-            tmp.vpcnt = i2 - vpi2;
-            tmp.offset += ((vpi2 - vpi) * PAGE_LEN_BYTE);
-            if(tmp.fd) tmp.fd->ref_cnt++;
-            iter = mmap_segments.insert(iter, tmp);
-            iter++;
-            iter++;
-            continue;
-        }
-        if(vpi <= i && vpi2 >= i2) {
-            if(iter->fd) {
-                if(iter->fd->ref_cnt) iter->fd->ref_cnt--;
-                if(iter->fd->ref_cnt == 0) {
-                    if(iter->fd->host_fd) close (iter->fd->host_fd);
-                    delete iter->fd;
-                }
+    uint64_t vpcnt = (ALIGN(size, PAGE_LEN_BYTE) >> PAGE_ADDR_OFFSET);
+
+    vector<VMSegInfo> poped;
+    mmap_table->erase(vpi, vpcnt, poped);
+    
+    for(auto &s : poped) {
+        // free file
+        if(s.fd) {
+            if(s.fd->ref_cnt > 1) {
+                s.fd->ref_cnt --;
+            } else {
+                if(s.fd->host_fd) close(s.fd->host_fd);
+                delete s.fd;
             }
-            iter = mmap_segments.erase(iter);
-            continue;
         }
-        if(vpi2 < i2) {
-            iter->vpindex = vpi2;
-            iter->vpcnt = i2 - vpi2;
-            iter->offset += ((vpi2 - i) * PAGE_LEN_BYTE);
-        }
-        else if(vpi > i) {
-            iter->vpcnt = vpi - i;
-        }
-        iter++;
-        continue;
-    }
-    for(VPageIndexT i = vpi; i < vpi2; i++) {
-        PTET pte = pt_get(i, nullptr);
-        if(pte & PTE_V) {
+        // free page table
+        for(VPageIndexT vpn = s.vpindex; vpn < s.vpindex + s.vpcnt; vpn++) {
+            PTET pte = pt_get(vpn, nullptr);
+            simroot_assert(pte & PTE_V);
             if(!(pte & PTE_NALLOC)) ppman->free(pte >> 10);
-            pt->pt_erase(i, stlist);
+            pt->pt_erase(vpn, stlist);
         }
     }
 }
@@ -213,29 +170,23 @@ void ThreadPageTableV2::msync_get_ppns(VirtAddrT addr, uint64_t size, vector<Pag
 
     VPageIndexT vpi = (addr >> PAGE_ADDR_OFFSET);
     VPageIndexT vpi2 = (ALIGN(addr + size, PAGE_LEN_BYTE) >> PAGE_ADDR_OFFSET);
-    
-    for(auto iter = mmap_segments.begin(); iter != mmap_segments.end(); ) {
-        if(!((iter->flag & PGFLAG_SHARE) && (iter->flag & PGFLAG_W) && (iter->fd) && (iter->fd->host_fd))) {
-            iter++;
-            continue;
-        }
-        VPageIndexT i = iter->vpindex, i2 = iter->vpindex + iter->vpcnt;
-        if(i >= vpi2 || i2 <= vpi) {
-            iter++;
-            continue;
-        }
 
+    vector<VMSegInfo*> overlaped;
+    mmap_table->getrange(vpi, vpi2 - vpi, overlaped);
+    for(auto &s : overlaped) {
+        if(!((s->flag & PGFLAG_SHARE) && (s->flag & PGFLAG_W) && (s->fd) && (s->fd->host_fd))) {
+            continue;
+        }
+        VPageIndexT i = s->vpindex, i2 = s->vpindex + s->vpcnt;
         VPageIndexT begin = std::max<VPageIndexT>(i, vpi), end = std::min<VPageIndexT>(i2, vpi2);
         for(VPageIndexT vpn = begin; vpn < end; vpn++) {
-            VPageIndexT vpn_in_file = (vpn - iter->vpindex) + (iter->offset / PAGE_LEN_BYTE);
-            auto iter2 = iter->fd->file_buffers.find(vpn_in_file);
-            if(iter2 != iter->fd->file_buffers.end()) {
+            VPageIndexT vpn_in_file = (vpn - s->vpindex) + (s->offset / PAGE_LEN_BYTE);
+            auto iter2 = s->fd->file_buffers.find(vpn_in_file);
+            if(iter2 != s->fd->file_buffers.end()) {
                 out->push_back(iter2->second);
             }
         }
-        iter++;
-    }
-    
+    }    
 }
 
 void ThreadPageTableV2::msync_writeback(VirtAddrT addr, uint64_t size, unordered_map<PageIndexT, vector<RawDataT>> *pages) {
@@ -246,36 +197,31 @@ void ThreadPageTableV2::msync_writeback(VirtAddrT addr, uint64_t size, unordered
     VPageIndexT vpi = (addr >> PAGE_ADDR_OFFSET);
     VPageIndexT vpi2 = (ALIGN(addr + size, PAGE_LEN_BYTE) >> PAGE_ADDR_OFFSET);
     
-    for(auto iter = mmap_segments.begin(); iter != mmap_segments.end(); ) {
-        if(!((iter->flag & PGFLAG_SHARE) && (iter->flag & PGFLAG_W) && (iter->fd) && (iter->fd->host_fd))) {
-            iter++;
+    vector<VMSegInfo*> overlaped;
+    mmap_table->getrange(vpi, vpi2 - vpi, overlaped);
+    for(auto &s : overlaped) {
+        if(!((s->flag & PGFLAG_SHARE) && (s->flag & PGFLAG_W) && (s->fd) && (s->fd->host_fd))) {
             continue;
         }
-        VPageIndexT i = iter->vpindex, i2 = iter->vpindex + iter->vpcnt;
-        if(i >= vpi2 || i2 <= vpi) {
-            iter++;
-            continue;
-        }
-
+        VPageIndexT i = s->vpindex, i2 = s->vpindex + s->vpcnt;
         VPageIndexT begin = std::max<VPageIndexT>(i, vpi), end = std::min<VPageIndexT>(i2, vpi2);
         for(VPageIndexT vpn = begin; vpn < end; vpn++) {
-            VPageIndexT vpn_in_file = (vpn - iter->vpindex) + (iter->offset / PAGE_LEN_BYTE);
-            auto iter2 = iter->fd->file_buffers.find(vpn_in_file);
-            if(iter2 != iter->fd->file_buffers.end()) {
+            VPageIndexT vpn_in_file = (vpn - s->vpindex) + (s->offset / PAGE_LEN_BYTE);
+            auto iter2 = s->fd->file_buffers.find(vpn_in_file);
+            if(iter2 != s->fd->file_buffers.end()) {
                 PageIndexT ppn = iter2->second;
                 auto iter3 = pages->find(ppn);
                 simroot_assert(iter3 != pages->end());
                 auto &d = iter3->second;
                 uint64_t off = vpn_in_file * PAGE_LEN_BYTE;
-                simroot_assert(off <= iter->fd->st_size);
-                uint64_t sz = std::min<uint64_t>(PAGE_LEN_BYTE, iter->fd->st_size - off);
-                lseek64(iter->fd->host_fd, off, SEEK_SET);
-                if(write(iter->fd->host_fd, d.data(), sz) < 0) {
-                    printf("Warnning: Write to host file %d failed\n", iter->fd->host_fd);
+                simroot_assert(off <= s->fd->st_size);
+                uint64_t sz = std::min<uint64_t>(PAGE_LEN_BYTE, s->fd->st_size - off);
+                lseek64(s->fd->host_fd, off, SEEK_SET);
+                if(write(s->fd->host_fd, d.data(), sz) < 0) {
+                    printf("Warnning: Write to host file %d failed\n", s->fd->host_fd);
                 }
             }
         }
-        iter++;
     }
 }
 
@@ -290,13 +236,7 @@ void ThreadPageTableV2::apply_cow(VirtAddrT addr, TgtMemSetList *stlist, vector<
 
     if(pte & PTE_NALLOC) {
         // This is allocated by mmap without initialization
-        VirtSeg * vseg = nullptr;
-        for(auto &seg : mmap_segments) {
-            if(vpn >= seg.vpindex && vpn < seg.vpindex + seg.vpcnt) {
-                vseg = &seg;
-                break;
-            }
-        }
+        VMSegInfo *vseg = mmap_table->get(vpn);
         simroot_assert(vseg);
 
         uint64_t pte_flgs = PTE_LEAF_V;
@@ -399,20 +339,31 @@ void ThreadPageTableV2::mprotect(VirtAddrT addr, uint64_t size, uint32_t prot_fl
     VPageIndexT vpi = (addr >> PAGE_ADDR_OFFSET);
     VPageIndexT vpcnt = (ALIGN(size, PAGE_LEN_BYTE) >> PAGE_ADDR_OFFSET);
 
-    // Update page table
-    for(VPageIndexT vpn = vpi; vpn < vpi + vpcnt; vpn++) {
-        PTET pte = pt->pt_get(vpn, nullptr);
-        if((pte & PTE_V) && !(pte & PTE_NALLOC)) {
+    uint32_t pgflag = 0;
+    if(prot_flag & PROT_READ) pgflag |= PGFLAG_R;
+    if(prot_flag & PROT_WRITE) pgflag |= PGFLAG_W;
+    if(prot_flag & PROT_EXEC) pgflag |= PGFLAG_X;
+    uint32_t pgflag_mask = (PGFLAG_R | PGFLAG_W | PGFLAG_X);
+
+    vector<VMSegInfo> poped;
+    mmap_table->erase(vpi, vpcnt, poped);
+    for(auto &s : poped) {
+        s.flag = (pgflag | (s.flag & (~pgflag_mask)));
+        mmap_table->insert(s);
+
+        for(VPageIndexT vpn = s.vpindex; vpn < s.vpindex + s.vpcnt; vpn++) {
+            PTET pte = pt->pt_get(vpn, nullptr);
+            simroot_assert(pte & PTE_V);
+            if(pte & PTE_NALLOC) {
+                continue;
+            }
             if(pte & PTE_COW) {
                 pte &= (~rwxmask);
                 pte |= (pte_flgs & (~PTE_W));
-                if(!(pte_flgs & PTE_W)) {
-                    pte &= (~PTE_COW);
-                }
                 pt->pt_update(vpn, pte, stlist);
             } else if((pte & rwxmask) != pte_flgs) {
                 pte &= (~rwxmask);
-                if(!(pte & PTE_W) && (pte_flgs & PTE_W) && ppman->is_shared(pte >> 10)) {
+                if(!(s.flag & PGFLAG_SHARE) && !(pte & PTE_W) && (pte_flgs & PTE_W) && ppman->is_shared(pte >> 10)) {
                     pte |= ((pte_flgs & (~PTE_W)) | PTE_COW);
                 } else {
                     pte |= pte_flgs;
@@ -420,52 +371,6 @@ void ThreadPageTableV2::mprotect(VirtAddrT addr, uint64_t size, uint32_t prot_fl
                 pt->pt_update(vpn, pte, stlist);
             }
         }
-    }
-
-    // Update mmap segments
-    VPageIndexT vpi2 = vpi + vpcnt;
-
-    uint32_t pgflag = 0;
-    if(prot_flag & PROT_READ) pgflag |= PGFLAG_R;
-    if(prot_flag & PROT_WRITE) pgflag |= PGFLAG_W;
-    if(prot_flag & PROT_EXEC) pgflag |= PGFLAG_X;
-    uint32_t pgflag_mask = (PGFLAG_R | PGFLAG_W | PGFLAG_X);
-
-    for(auto iter = mmap_segments.begin(); iter != mmap_segments.end(); ) {
-        VPageIndexT i = iter->vpindex, i2 = iter->vpindex + iter->vpcnt;
-        if(i >= vpi2 || i2 <= vpi) {
-            iter++;
-            continue;
-        }
-
-        // divide at higher addr
-        if(i2 > vpi2) {
-            VirtSeg tmp = *iter;
-            tmp.offset += (vpi2 - i) * PAGE_LEN_BYTE;
-            tmp.vpindex = vpi2;
-            tmp.vpindex = i2 - vpi2;
-            if(tmp.fd) tmp.fd->ref_cnt++;
-            iter->vpcnt = vpi2 - i;
-            iter = mmap_segments.insert(iter, tmp);
-            iter++; // point to original pos
-            i2 = vpi2;
-        }
-
-        // divide at lower addr
-        if(vpi > i) {
-            VirtSeg tmp = *iter;
-            tmp.offset += (vpi - i) * PAGE_LEN_BYTE;
-            tmp.vpindex = vpi;
-            tmp.vpcnt = i2 - vpi;
-            if(tmp.fd) tmp.fd->ref_cnt++;
-            iter->vpcnt = vpi - i;
-            iter = mmap_segments.insert(iter, tmp);
-            i = vpi;
-        }
-
-        iter->flag &= (~pgflag_mask);
-        iter->flag |= pgflag;
-        iter++;
     }
 
 }

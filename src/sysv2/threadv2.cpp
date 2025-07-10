@@ -210,7 +210,7 @@ void ThreadV2::elf_exec(SimWorkload &param, VirtAddrT *out_entry, VirtAddrT *out
 
     // 设置PIT ELF的默认加载位置
     if(reader.get_type() == ET_DYN) {
-        elf_load_addr = MIN_VADDR;
+        elf_load_addr = 0x10000000UL;
         elf_entry += elf_load_addr;
         pgtable->init_brk(elf_load_addr);
     }

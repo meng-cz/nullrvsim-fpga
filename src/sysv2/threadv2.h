@@ -89,7 +89,7 @@ public:
     inline int32_t fdtable_insert(FileDescriptor *new_fd) {
         int32_t ret = (*alloc_fd);
         (*alloc_fd)++;
-        simroot_assertf(ret < (1 << 30), "File descripter run out")
+        simroot_assertf(ret < (1 << 30), "File descripter run out");
         fdtable->insert(std::pair<int32_t, FileDescriptor*>(ret, new_fd));
         return ret;
     }

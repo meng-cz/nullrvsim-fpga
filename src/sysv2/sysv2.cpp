@@ -262,7 +262,7 @@ void SMPSystemV2::insert_ready_thread_and_execute(ThreadV2 *thread, uint32_t pre
 bool SMPSystemV2::_memcpy_to_target(uint32_t cpu_id, VirtAddrT tgt_dst, void * src, uint64_t size) {
     ThreadV2 *curt = running_threads[cpu_id];
 
-    VPageIndexT vpn = (MAX_VADDR >> PAGE_ADDR_OFFSET);
+    VPageIndexT vpn = 0;
     PageIndexT ppn = 0;
 
     auto check_vaddr_prot = [&](VirtAddrT va) -> bool {
@@ -279,7 +279,8 @@ bool SMPSystemV2::_memcpy_to_target(uint32_t cpu_id, VirtAddrT tgt_dst, void * s
                 for(auto &cp : cplist) {
                     _perform_target_pagecpy(cpu_id, cp);
                 }
-                cpus->flush_tlb_vpgidx(cpu_id, vpn << PAGE_ADDR_OFFSET, curt->asid);
+                // cpus->flush_tlb_vpgidx(cpu_id, vpn << PAGE_ADDR_OFFSET, curt->asid);
+                cpus->flush_tlb_all(cpu_id);
                 pte = curt->pgtable->pt_get(vpn, nullptr);
             }
             else if(!((pte & PTE_V) && (pte & PTE_W))) {
@@ -329,7 +330,7 @@ bool SMPSystemV2::_memcpy_to_target(uint32_t cpu_id, VirtAddrT tgt_dst, void * s
 bool SMPSystemV2::_memcpy_from_target(uint32_t cpu_id, void * dst, VirtAddrT tgt_src, uint64_t size) {
     ThreadV2 *curt = running_threads[cpu_id];
 
-    VPageIndexT vpn = (MAX_VADDR >> PAGE_ADDR_OFFSET);
+    VPageIndexT vpn = 0;
     PageIndexT ppn = 0;
 
     auto check_vaddr_prot = [&](VirtAddrT va) -> bool {
@@ -346,7 +347,8 @@ bool SMPSystemV2::_memcpy_from_target(uint32_t cpu_id, void * dst, VirtAddrT tgt
                 for(auto &cp : cplist) {
                     _perform_target_pagecpy(cpu_id, cp);
                 }
-                cpus->flush_tlb_vpgidx(cpu_id, vpn << PAGE_ADDR_OFFSET, curt->asid);
+                // cpus->flush_tlb_vpgidx(cpu_id, vpn << PAGE_ADDR_OFFSET, curt->asid);
+                cpus->flush_tlb_all(cpu_id);
                 pte = curt->pgtable->pt_get(vpn, nullptr);
             }
             else if(!(pte & PTE_V)) {
@@ -387,7 +389,7 @@ bool SMPSystemV2::_memcpy_from_target(uint32_t cpu_id, void * dst, VirtAddrT tgt
 bool SMPSystemV2::_strcpy_from_target(uint32_t cpu_id, char * dst, VirtAddrT tgt_src) {
     ThreadV2 *curt = running_threads[cpu_id];
 
-    VPageIndexT vpn = (MAX_VADDR >> PAGE_ADDR_OFFSET);
+    VPageIndexT vpn = 0;
     PageIndexT ppn = 0;
 
     auto check_vaddr_prot = [&](VirtAddrT va) -> bool {
@@ -404,7 +406,8 @@ bool SMPSystemV2::_strcpy_from_target(uint32_t cpu_id, char * dst, VirtAddrT tgt
                 for(auto &cp : cplist) {
                     _perform_target_pagecpy(cpu_id, cp);
                 }
-                cpus->flush_tlb_vpgidx(cpu_id, vpn << PAGE_ADDR_OFFSET, curt->asid);
+                // cpus->flush_tlb_vpgidx(cpu_id, vpn << PAGE_ADDR_OFFSET, curt->asid);
+                cpus->flush_tlb_all(cpu_id);
                 pte = curt->pgtable->pt_get(vpn, nullptr);
             }
             else if(!(pte & PTE_V)) {
@@ -2340,7 +2343,8 @@ VirtAddrT SMPSystemV2::_page_fault_rx(uint32_t cpu_id, VirtAddrT pc, VirtAddrT b
         for(auto &cp : cplist) {
             _perform_target_pagecpy(cpu_id, cp);
         }
-        cpus->flush_tlb_vpgidx(cpu_id, vpn << PAGE_ADDR_OFFSET, CURT->asid);
+        // cpus->flush_tlb_vpgidx(cpu_id, vpn << PAGE_ADDR_OFFSET, CURT->asid);
+        cpus->flush_tlb_all(cpu_id);
         
         LOG_SYSCALL_2("page_fault_rx", "0x%lx", pc, "0x%lx", badaddr, "%d", 0);
         return pc;
@@ -2366,7 +2370,8 @@ VirtAddrT SMPSystemV2::_page_fault_w(uint32_t cpu_id, VirtAddrT pc, VirtAddrT ba
         for(auto &cp : cplist) {
             _perform_target_pagecpy(cpu_id, cp);
         }
-        cpus->flush_tlb_vpgidx(cpu_id, vpn << PAGE_ADDR_OFFSET, CURT->asid);
+        // cpus->flush_tlb_vpgidx(cpu_id, vpn << PAGE_ADDR_OFFSET, CURT->asid);
+        cpus->flush_tlb_all(cpu_id);
         
         LOG_SYSCALL_2("page_fault_w", "0x%lx", pc, "0x%lx", badaddr, "%d", 0);
         return pc;

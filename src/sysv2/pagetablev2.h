@@ -2,7 +2,7 @@
 #define THREAD_PAGE_TABLE_V2_H
 
 #include "pagememv2.h"
-
+#include "vsegtablev2.h"
 
 /**
  * For static elf
@@ -17,10 +17,6 @@
  * | -- .text .rodata -- | -- .bss ... -- | ... heap ... --->  <---  ... mmap ... |   ld.so   |
  * | ---------- Load from ELF ----------- | - alloc by brk ->  <- alloc by mmap - |           |
 */
-
-#define MIN_VADDR (0x0000000000UL)
-#define MAX_MMAP_VADDR (0x3000000000UL)
-#define MAX_VADDR (0x3f00000000UL)
 
 /**
  * RV64 4KB
@@ -59,19 +55,15 @@ public:
 
 protected:
 
+    VirtAddrT MIN_MMAP_VADDR = 0x80000000UL;
+    VirtAddrT MAX_MMAP_VADDR = 0xf0000000UL;
+    VirtAddrT MAX_VADDR = 0x100000000UL;
+
     PhysPageAllocatorV2 *ppman;
 
     unique_ptr<PageTable4K> pt;
 
-    typedef struct {
-        VPageIndexT     vpindex;
-        uint64_t        vpcnt;
-        string          info;
-        PageFlagT       flag;
-        FileDescriptor* fd;
-        uint64_t        offset;
-    } VirtSeg;
-    vector<VirtSeg> mmap_segments;  // Ordered from high addr to low addr
+    unique_ptr<VirtMemSegTable> mmap_table;
     
     VirtAddrT brk_va = 0;
     VirtAddrT dyn_brk_va = MAX_MMAP_VADDR;
