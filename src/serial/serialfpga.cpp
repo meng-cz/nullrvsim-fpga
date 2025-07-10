@@ -133,6 +133,7 @@ const uint64_t SEROP_RET_BITS[SEROP_NUM] = {
     0,
     0,
     0,
+    64,
     64
 };
 
