@@ -354,7 +354,7 @@ void AtomicSMPCores::_on_cur_simcore(uint32_t id) {
             IntDataT value = data;
             memcpy(&previous, main_mem.data() + (paddr - mem_base), len);
             if(len == 4) {
-                RAW_DATA_AS(ret).i64 = RAW_DATA_AS(ret).i32;
+                RAW_DATA_AS(previous).i64 = RAW_DATA_AS(previous).i32;
             }
             if(SimError::success != isa::perform_amo_op(inst.param.amo, &stvalue, previous, value)) {
                 RAISE_ITR(ITR_ILLEGAL_INST, raw_inst);
