@@ -308,8 +308,8 @@ void AtomicSMPCores::_on_cur_simcore(uint32_t id) {
         LOG_INST("%s > 0x%lx -> 0x%lx", inst.debug_name_str.c_str(), core.pc, reg[rd1]);
     }
     else if(inst.opcode == RV64OPCode::jalr) {
-        if(rd1) reg[rd1] = inst.pc + ((inst.is_rvc())?2:4);
         core.pc = reg[rs1] + RAW_DATA_AS(inst.imm).i64;
+        if(rd1) reg[rd1] = inst.pc + ((inst.is_rvc())?2:4);
         LOG_INST("%s > 0x%lx -> 0x%lx", inst.debug_name_str.c_str(), core.pc, reg[rd1]);
     }
     else if(inst.opcode == RV64OPCode::branch) {
