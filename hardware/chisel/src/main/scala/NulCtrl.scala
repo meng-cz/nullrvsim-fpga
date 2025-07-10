@@ -759,5 +759,5 @@ class NulCPUCtrlWithUart(frequency: Int, baudRate: Int) extends Module {
 
 object NulCPUCtrlUartMain extends App {
     println("Generating the NulCPUCtrlUart hardware")
-    emitVerilog(new NulCPUCtrlWithUart(125000000, 2000000), Array("--target-dir", "generated"))
+    emitVerilog(new NulCPUCtrlWithUart(125000000, 115200), Array("--target-dir", "generated"))
 }
