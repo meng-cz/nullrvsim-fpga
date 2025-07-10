@@ -199,13 +199,7 @@ class NulCPUCtrl() extends Module {
             when(opcode === SEROP_NEXT) {
                 trans_bytes := 15.U
                 state := STATE_SEND_ARG
-            }.elsewhen(opcode === SEROP_REGRD) {
-                trans_bytes := 8.U
-                state := STATE_SEND_ARG
-            }.elsewhen(opcode === SEROP_MEMRD) {
-                trans_bytes := 8.U
-                state := STATE_SEND_ARG
-            }.elsewhen(opcode === SEROP_CLK) {
+            }.elsewhen(opcode === SEROP_REGRD || opcode === SEROP_MEMRD || opcode === SEROP_CLK || opcode === SEROP_UCLK) {
                 trans_bytes := 8.U
                 state := STATE_SEND_ARG
             }.otherwise {

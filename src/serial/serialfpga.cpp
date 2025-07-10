@@ -319,7 +319,10 @@ uint64_t SerialFPGAAdapter::get_current_tick() {
     vector<uint8_t> buf, ret;
     int8_t value = _perform_op(SEROP_CLK, buf, ret);
     simroot_assertf(SEROP_CLK == value, "Operation Clock Failed: %d", value);
-    return _pop_int(ret, 8);
+    uint64_t rvalue = _pop_int(ret, 8);
+    uint32_t cpu_id = 0;
+    DEBUGOP("Clock -> %ld", rvalue);
+    return rvalue;
 }
 
 uint64_t SerialFPGAAdapter::get_current_utick(uint32_t cpu_id) {
@@ -327,7 +330,9 @@ uint64_t SerialFPGAAdapter::get_current_utick(uint32_t cpu_id) {
     _append_int(buf, cpu_id, 2);
     int8_t value = _perform_op(SEROP_UCLK, buf, ret);
     simroot_assertf(SEROP_UCLK == value, "Operation UClock on Core %d Failed: %d", cpu_id, value);
-    return _pop_int(ret, 8);
+    uint64_t rvalue = _pop_int(ret, 8);
+    DEBUGOP("UClock (0x%d) -> %ld", cpu_id, rvalue);
+    return rvalue;
 }
 
 
