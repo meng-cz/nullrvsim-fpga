@@ -48,6 +48,9 @@ public:
     virtual uint64_t get_current_tick() {
         return cur_tick;
     };
+    virtual uint64_t get_current_utick(uint32_t cpu_id) {
+        return uticks[cpu_id];
+    }
 
     virtual void dump_core(std::ofstream &ofile);
 
@@ -84,6 +87,7 @@ typedef struct {
     unordered_map<PhysAddrT, uint32_t> srlc;
 
     uint64_t cur_tick = 0;
+    vector<uint64_t> uticks;
 
     vector<shared_ptr<std::ofstream>> ofiles;
 };

@@ -24,9 +24,10 @@ using simcpu::CPUGroupInterface;
 #define SEROP_PGWT          (14)    //  OFF[3]OP[5] ID[16] PPN[40]          DATA[512B]-> ACK[8]
 #define SEROP_PGCP          (15)    //  OP[8]       ID[16] DST[40] SRC[40]  -> ACK[8]
 #define SEROP_CLK           (16)    //  OP[8]                               -> ACK[8] CLK[64]
-#define SEROP_NUM           (17)
+#define SEROP_UCLK          (17)    //  OP[8]       ID[16]                  -> ACK[8] CLK[64]
+#define SEROP_NUM           (18)
 
-#define SERACK_ALLHALT      (63)
+#define SERACK_ALLHALT      (31)
 
 typedef vector<uint8_t> BufT;
 
@@ -62,6 +63,7 @@ public:
     virtual void pxymem_page_copy(uint32_t cpu_id, PageIndexT dst, PageIndexT src);
 
     virtual uint64_t get_current_tick();
+    virtual uint64_t get_current_utick(uint32_t cpu_id);
 
     virtual void dump_core(std::ofstream &ofile);
     virtual void set_debug(bool on) { debug_op = on; };

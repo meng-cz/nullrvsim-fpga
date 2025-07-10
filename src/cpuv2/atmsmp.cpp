@@ -39,6 +39,8 @@ AtomicSMPCores::AtomicSMPCores(uint32_t core_num, PhysAddrT mem_base, uint64_t m
     }
 
     is_sv48 = conf::get_int("root", "vm_is_sv48", 1);
+
+    uticks.assign(core_num, 0);
 }
 
 AtomicSMPCores::~AtomicSMPCores() {
@@ -231,6 +233,8 @@ void AtomicSMPCores::_on_cur_simcore(uint32_t id) {
     if(core.ishalted || core.interrupt) {
         return;
     }
+
+    uticks[id]++;
 
     uint32_t raw_inst = 0;
     isa::RV64InstDecoded inst;

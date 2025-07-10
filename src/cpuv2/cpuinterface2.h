@@ -37,6 +37,7 @@ public:
     virtual void pxymem_page_copy(uint32_t cpu_id, PageIndexT dst, PageIndexT src) = 0;
 
     virtual uint64_t get_current_tick() = 0;
+    virtual uint64_t get_current_utick(uint32_t cpu_id) = 0;
 };
 
 

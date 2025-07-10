@@ -59,6 +59,9 @@ protected:
     bool has_init = false;
     bool has_hard_fp = false;
 
+    uint64_t start_tick = 0;
+    vector<uint64_t> start_uticks;
+
     PhysPageAllocatorV2 *ppman;
 
     uint32_t cpu_num = 0;

@@ -321,6 +321,15 @@ uint64_t SerialFPGAAdapter::get_current_tick() {
     return _pop_int(ret, 8);
 }
 
+uint64_t SerialFPGAAdapter::get_current_utick(uint32_t cpu_id) {
+    vector<uint8_t> buf, ret;
+    _append_int(buf, cpu_id, 2);
+    int8_t value = _perform_op(SEROP_UCLK, buf, ret);
+    simroot_assertf(SEROP_UCLK == value, "Operation UClock on Core %d Failed: %d", cpu_id, value);
+    return _pop_int(ret, 8);
+}
+
+
 void SerialFPGAAdapter::dump_core(std::ofstream &ofile) {
     char logbuf[256];
     uint32_t cpu_num = conf::get_int("root", "core_num", 1);

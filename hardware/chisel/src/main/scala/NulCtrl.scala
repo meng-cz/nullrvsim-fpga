@@ -71,7 +71,10 @@ class NulCPUCtrl() extends Module {
     val SEROP_PGWT  = 14.U
     val SEROP_PGCP  = 15.U
     val SEROP_CLK   = 16.U
+    val SEROP_UCLK  = 17.U
     val SEROP_INST  = 20.U
+
+    val SERRESP_ALLHALT  = 31.U
 
     val STATE_INIT_WAIT     = 0.U 
     val STATE_DO_INIT       = 1.U
@@ -119,7 +122,7 @@ class NulCPUCtrl() extends Module {
         opcode := rxop
         opoff := rxoff
 
-        when(rxop === SEROP_HALT || rxop === SEROP_ITR || rxop === SEROP_FTLB || rxop === SEROP_SYNCI) {
+        when(rxop === SEROP_HALT || rxop === SEROP_ITR || rxop === SEROP_FTLB || rxop === SEROP_SYNCI || rxop === SEROP_UCLK) {
             trans_bytes := 2.U 
         }.elsewhen(rxop === SEROP_REGRD) {
             trans_bytes := 4.U 
@@ -176,6 +179,11 @@ class NulCPUCtrl() extends Module {
                     retarg(i) := global_clk(i*8+7, i*8)
                 }
             }
+            is(SEROP_UCLK) {
+                for(i <- 0 to 7) {
+                    retarg(i) := user_clk(i*8+7, i*8)
+                }
+            }
             is(SEROP_INST) { state := STATE_INST }
         }
     }.elsewhen(state === STATE_RECV_ARG && io.rx.valid) {
@@ -224,6 +232,10 @@ class NulCPUCtrl() extends Module {
     when(state === STATE_WAIT_NEXT && eq_valid) {
         eq_valid := false.B
         state := STATE_NEXT
+    }.elsewhen(state === STATE_WAIT_NEXT && cpu_state === CPU_HALT) {
+        opcode := SERRESP_ALLHALT
+        opoff := 0.U
+        state := STATE_SEND_HEAD
     }
 
     val cnt = RegInit(1.U(128.W))

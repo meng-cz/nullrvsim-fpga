@@ -50,9 +50,6 @@ SMPSystemV2::SMPSystemV2(SimWorkload &workload, CPUGroupInterface *cpus, uint32_
 
     init_target_memory(stlist);
 
-    printf("Init at %ld Ticks\n", cpus->get_current_tick());
-    printf("Init Simulation System With Entry 0x%lx, Stack 0x%lx\n", entry, sp);
-
     if(conf::get_int("root", "debug_runtime", 0)) {
         simroot::debug_trace_object(true);
     }
@@ -60,6 +57,15 @@ SMPSystemV2::SMPSystemV2(SimWorkload &workload, CPUGroupInterface *cpus, uint32_
     for(int i = 0; i < cpu_num; i++) {
         cpus->sync_inst_stream(i);
     }
+
+    start_uticks.assign(cpu_num, 0);
+    for(uint32_t i = 0; i < cpu_num; i++) {
+        start_uticks[i] = cpus->get_current_utick(i);
+    }
+    start_tick = cpus->get_current_tick();
+
+    printf("Init Simulation System With Entry 0x%lx, Stack 0x%lx\n", entry, sp);
+    printf("Start Simulation at %ld Ticks\n", start_tick);
 
     insert_ready_thread_and_execute(init_thread, 0);
 
@@ -899,7 +905,22 @@ void SMPSystemV2::run_sim() {
         }
     }
 
-    printf("All cores halted, exit\n");
+    uint64_t end_tick = cpus->get_current_tick();
+    printf("%ld: All cores halted, exit\n", end_tick);
+    printf("Time Statistic:\n");
+    printf("    Global Ticks: %ld\n", end_tick - start_tick);
+
+    vector<uint64_t> end_uticks = start_uticks;
+    uint64_t utick_sum = 0;
+    for(uint32_t i = 0; i < cpu_num; i++) {
+        end_uticks[i] = cpus->get_current_utick(i);
+        utick_sum += (end_uticks[i] - start_uticks[i]);
+    }
+    printf("    User Ticks: %ld\n", utick_sum);
+    printf("    UTick per Core:\n");
+    for(uint32_t i = 0; i < cpu_num; i++) {
+        printf("        %d: %ld\n", i, end_uticks[i] - start_uticks[i]);
+    }
 
     if(!waiting_threads.empty()) {
         printf("Warnning: These Thread is Still WAITING:");
