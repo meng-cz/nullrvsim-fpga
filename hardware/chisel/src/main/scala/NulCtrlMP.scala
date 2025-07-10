@@ -737,5 +737,5 @@ class NulCPUCtrlMPWithUart(cpunum: Int, frequency: Int, baudRate: Int) extends M
 
 object NulCPUCtrlUartMPMain extends App {
     println("Generating the NulCPUCtrlMPUart hardware")
-    emitVerilog(new NulCPUCtrlMPWithUart(4, 125000000, 115200), Array("--target-dir", "generated"))
+    emitVerilog(new NulCPUCtrlMPWithUart(4, 125000000, 2000000), Array("--target-dir", "generated"))
 }
