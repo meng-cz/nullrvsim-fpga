@@ -75,10 +75,10 @@ private:
     void _read_serial(void * buf, uint64_t size);
     void _write_serial(void * buf, uint64_t size);
 
-    void _append_int(BufT &buf, int64_t data, uint64_t bytes);
+    void _append_int(BufT &buf, uint64_t data, uint64_t bytes);
     void _append_buf(BufT &buf, void * data, uint64_t bytes);
 
-    int64_t _pop_int(BufT &buf, uint64_t bytes);
+    uint64_t _pop_int(BufT &buf, uint64_t bytes);
 
     int32_t dbg = 0;
     bool debug_op = false;

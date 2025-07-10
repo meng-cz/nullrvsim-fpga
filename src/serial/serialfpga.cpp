@@ -95,7 +95,7 @@ void SerialFPGAAdapter::_write_serial(void * buf, uint64_t size) {
     simroot_assertf(ret == size, "Write Serial Failed: %ld", ret);
 }
 
-void SerialFPGAAdapter::_append_int(BufT &buf, int64_t data, uint64_t bytes) {
+void SerialFPGAAdapter::_append_int(BufT &buf, uint64_t data, uint64_t bytes) {
     simroot_assert(bytes > 0 && bytes <= 8);
     uint64_t sz = buf.size();
     buf.resize(sz + bytes);
@@ -106,11 +106,10 @@ void SerialFPGAAdapter::_append_buf(BufT &buf, void * data, uint64_t bytes) {
     buf.resize(sz + bytes);
     memcpy(buf.data() + sz, data, bytes);
 }
-int64_t SerialFPGAAdapter::_pop_int(BufT &buf, uint64_t bytes) {
-    int64_t ret = 0;
+uint64_t SerialFPGAAdapter::_pop_int(BufT &buf, uint64_t bytes) {
+    uint64_t ret = 0;
     simroot_assert(bytes > 0 && bytes <= 8);
     memcpy(&ret, buf.data(), bytes);
-    if(bytes < 8 && ret >> (bytes * 8 - 1)) ret |= (~((1 << (bytes * 8)) - 1));
     if(buf.size() > bytes) memmove(buf.data(), buf.data() + bytes, buf.size() - bytes);
     buf.resize(buf.size() - bytes);
     return ret;
