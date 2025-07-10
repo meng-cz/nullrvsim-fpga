@@ -189,14 +189,14 @@ void SerialFPGAAdapter::redirect(uint32_t cpu_id, VirtAddrT addr) {
 bool SerialFPGAAdapter::next(uint32_t *itr_cpu, VirtAddrT *itr_pc, uint32_t *itr_cause, RawDataT *itr_arg) {
     vector<uint8_t> buf, ret;
     int8_t value = _perform_op(SEROP_NEXT, buf, ret);
-    simroot_assertf(SEROP_NEXT == value || SERACK_ALLHALT == value, "Operation Next Failed: %d", value);
+    simroot_assertf(SEROP_NEXT == value, "Operation Next Failed: %d", value);
     *itr_cpu = _pop_int(ret, 2);
     *itr_cause = _pop_int(ret, 1);
     *itr_pc = _pop_int(ret, 6);
     *itr_arg = _pop_int(ret, 6);
     uint32_t cpu_id = *itr_cpu;
     DEBUGOP("Next -> (0x%lx, %d, 0x%lx)", *itr_pc, *itr_cause, *itr_arg);
-    return (SEROP_NEXT == value);
+    return (*itr_cpu != 0xffff);
 }
 
 void SerialFPGAAdapter::flush_tlb_all(uint32_t cpu_id) {

@@ -27,8 +27,6 @@ using simcpu::CPUGroupInterface;
 #define SEROP_UCLK          (17)    //  OP[8]       ID[16]                  -> ACK[8] CLK[64]
 #define SEROP_NUM           (18)
 
-#define SERACK_ALLHALT      (31)
-
 typedef vector<uint8_t> BufT;
 
 class SerialFPGAAdapter : public CPUGroupInterface, public TraceObject {

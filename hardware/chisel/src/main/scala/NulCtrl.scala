@@ -74,8 +74,6 @@ class NulCPUCtrl() extends Module {
     val SEROP_UCLK  = 17.U
     val SEROP_INST  = 20.U
 
-    val SERRESP_ALLHALT  = 31.U
-
     val STATE_INIT_WAIT     = 0.U 
     val STATE_DO_INIT       = 1.U
 
@@ -227,8 +225,8 @@ class NulCPUCtrl() extends Module {
         eq_valid := false.B
         state := STATE_NEXT
     }.elsewhen(state === STATE_WAIT_NEXT && cpu_state === CPU_HALT) {
-        opcode := SERRESP_ALLHALT
-        opoff := 0.U
+        retarg(0) := "hff".U
+        retarg(1) := "hff".U
         state := STATE_SEND_HEAD
     }
 
