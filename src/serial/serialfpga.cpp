@@ -54,8 +54,8 @@ SerialFPGAAdapter::SerialFPGAAdapter(string devfile, uint32_t baudrate) {
 
     int rate = get_baudrate_const(baudrate);
     simroot_assertf(rate > 0, "Unknown Serial Speed %d", baudrate);
-    cfsetospeed(&tio, rate);
-    cfsetispeed(&tio, rate);
+    simroot_assertf(cfsetospeed(&tio, rate) == 0, "Setup Baudrate %d for Device %s Failed", baudrate, devfile.c_str());
+    simroot_assertf(cfsetispeed(&tio, rate) == 0, "Setup Baudrate %d for Device %s Failed", baudrate, devfile.c_str());
     
     tio.c_cflag |= CLOCAL | CREAD;
     tio.c_cflag &= ~CSIZE;
