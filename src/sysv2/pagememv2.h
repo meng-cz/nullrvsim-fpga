@@ -95,6 +95,10 @@ public:
     bool is_shared(PageIndexT ppindex);
     bool free(PageIndexT ppindex);
 
+    uint64_t free_size() {
+        return valid_pages.size() << PAGE_ADDR_OFFSET;
+    }
+
 protected:
 
     std::list<PageIndexT> valid_pages;

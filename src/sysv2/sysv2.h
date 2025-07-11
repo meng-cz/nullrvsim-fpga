@@ -63,6 +63,8 @@ protected:
     vector<uint64_t> start_uticks;
 
     PhysPageAllocatorV2 *ppman;
+    uint64_t membase = 0;
+    uint64_t memsz = 0;
 
     uint32_t cpu_num = 0;
     CPUGroupInterface *cpus;
@@ -284,6 +286,7 @@ protected:
     SYSCALL_CLAIM_V2(176, getgid);
     SYSCALL_CLAIM_V2(177, getegid);
     SYSCALL_CLAIM_V2(178, gettid);
+    SYSCALL_CLAIM_V2(179, sysinfo);
     SYSCALL_CLAIM_V2(206, sendto);
     SYSCALL_CLAIM_V2(212, recvmsg);
     SYSCALL_CLAIM_V2(214, brk);

@@ -15,6 +15,7 @@
 #include <sys/stat.h>
 #include <sys/ioctl.h>
 #include <sys/socket.h>
+#include <sys/sysinfo.h>
 
 #include <net/if.h>
 
@@ -23,7 +24,7 @@
 #include <linux/sched.h>
 
 SMPSystemV2::SMPSystemV2(SimWorkload &workload, CPUGroupInterface *cpus, uint32_t cpu_num, uint64_t membase, uint64_t memsz)
-: cpus(cpus), cpu_num(cpu_num) {
+: cpus(cpus), cpu_num(cpu_num), membase(membase), memsz(memsz) {
     
     running_threads.assign(cpu_num, nullptr);
 
@@ -864,6 +865,7 @@ void SMPSystemV2::run_sim() {
             SYSCALL_CASE_V2(176, getgid);
             SYSCALL_CASE_V2(177, getegid);
             SYSCALL_CASE_V2(178, gettid);
+            SYSCALL_CASE_V2(179, sysinfo);
             SYSCALL_CASE_V2(206, sendto);
             SYSCALL_CASE_V2(212, recvmsg);
             SYSCALL_CASE_V2(214, brk);
@@ -1392,15 +1394,17 @@ SYSCALL_DEFINE_V2(78, readlinkat) {
 }
 
 struct rv_stat {
-    uint64_t    st_dev;		/* Device.  */
+    uint64_t    st_dev;		/* Device.  */ 
     uint64_t    st_ino;		/* file serial number.	*/
     uint32_t    st_mode;		/* File mode.  */
     uint32_t    st_nlink;		/* Link count.  */
     uint32_t    st_uid;		/* User ID of the file's owner.  */
     uint32_t    st_gid;		/* Group ID of the file's group.  */
     uint64_t    st_rdev;		/* Device number, if device.  */
+    uint64_t    pad1;
     int64_t     st_size;		/* Size of file, in bytes.  */
-    int64_t     st_blksize;	/* Optimal block size for I/O.  */
+    int32_t     st_blksize;	/* Optimal block size for I/O.  */
+    int32_t     pad2;
     int64_t     st_blocks;	/* Number 512-byte blocks allocated. */
     struct _rv_timespec64 st_atim;
     struct _rv_timespec64 st_mtim;
@@ -1443,7 +1447,7 @@ SYSCALL_DEFINE_V2(79, newfstatat) {
 
     if(ret < 0) {
         ret = -errno;
-    } else if(!_memcpy_to_target(cpu_id, usr_buf, &host_buf, sizeof(struct rv_stat))) {
+    } else if(!_memcpy_to_target(cpu_id, usr_buf, &buf, sizeof(struct rv_stat))) {
         LOG_SYSCALL_4("newfstatat", "%d", dirfd, "0x%lx", pathname, "0x%lx", usr_buf, "%ld", flags, "%s", "EFAULT");
         ECALL_RET(-EFAULT, pc+4);
     }
@@ -1897,6 +1901,24 @@ SYSCALL_DEFINE_V2(177, getegid) {
 SYSCALL_DEFINE_V2(178, gettid) {
     int64_t ret = CURT->tid;
     LOG_SYSCALL_1("gettid", "%ld", IREG_V(a0), "%ld", ret);
+    ECALL_RET(ret, pc+4);
+}
+
+SYSCALL_DEFINE_V2(179, sysinfo) {
+    VirtAddrT info = IREG_V(a0);
+
+    struct sysinfo infobuf;
+    int64_t ret = sysinfo(&infobuf);
+    infobuf.totalram = infobuf.totalhigh = memsz;
+    infobuf.freeram = infobuf.freehigh = ppman->free_size();
+    infobuf.sharedram = infobuf.bufferram = infobuf.totalswap = infobuf.freeswap = 0;
+    infobuf.mem_unit = PAGE_LEN_BYTE;
+    if(!_memcpy_to_target(cpu_id, info, &infobuf, sizeof(infobuf))) {
+        LOG_SYSCALL_1("sysinfo", "0x%lx", info, "%s", "EFAULT");
+        ECALL_RET(-EFAULT, pc+4);
+    }
+
+    LOG_SYSCALL_1("sysinfo", "0x%lx", info, "%ld", ret);
     ECALL_RET(ret, pc+4);
 }
 
