@@ -203,17 +203,10 @@ void ThreadV2::elf_exec(SimWorkload &param, VirtAddrT *out_entry, VirtAddrT *out
     uint32_t seg_num = reader.segments.size();
     VirtAddrT elf_entry = reader.get_entry();
     VirtAddrT interp_entry = 0;
-    VirtAddrT phdr = 0;
+    VirtAddrT phdr = reader.get_segments_offset();
     VirtAddrT elf_load_addr = 0;
     VirtAddrT interp_load_addr = 0;
     const char *interp_str = nullptr;
-
-    // 设置PIT ELF的默认加载位置
-    if(reader.get_type() == ET_DYN) {
-        elf_load_addr = 0x10000000UL;
-        elf_entry += elf_load_addr;
-        pgtable->init_brk(elf_load_addr);
-    }
 
     // 查找有没有interp和代码段，设置phdr的虚拟地址
     VirtAddrT initbrk = elf_load_addr;
@@ -227,13 +220,25 @@ void ThreadV2::elf_exec(SimWorkload &param, VirtAddrT *out_entry, VirtAddrT *out
             has_text_seg = true;
         }
         if(pseg->get_type() == PT_PHDR) {
-            phdr = pseg->get_virtual_address() + elf_load_addr;
+            phdr = pseg->get_virtual_address();
+        }
+        if(pseg->get_type() == PT_LOAD && pseg->get_offset() == 0) {
+            elf_load_addr += pseg->get_virtual_address();
         }
     }
     if(!has_text_seg) {
         LOG(ERROR) << "No .TEXT Segment Loaded in ELF File: " << param.file_path;
         assert(0);
     }
+
+    // 设置PIT ELF的默认加载位置
+    if(reader.get_type() == ET_DYN) {
+        simroot_assertf(elf_load_addr == 0, "Dynamic ELF Should Start with 0 Address");
+        elf_load_addr = 0x10000000UL;
+        elf_entry += elf_load_addr;
+        pgtable->init_brk(elf_load_addr);
+    }
+    phdr += elf_load_addr;
 
     // 加载elf的PT_LOAD段
     for (int i = 0; i < seg_num; ++i) {
@@ -242,7 +247,7 @@ void ThreadV2::elf_exec(SimWorkload &param, VirtAddrT *out_entry, VirtAddrT *out
 
         uint64_t filesz = pseg->get_file_size();
         uint64_t memsz = pseg->get_memory_size();
-        VirtAddrT seg_addr = pseg->get_virtual_address() + elf_load_addr;
+        VirtAddrT seg_addr = pseg->get_virtual_address() + ((reader.get_type() == ET_DYN)?elf_load_addr:0);
         uint8_t *seg_data = (uint8_t*)(pseg->get_data());
         PageFlagT flag = _elf_pf_to_pgflg(pseg->get_flags());
 
