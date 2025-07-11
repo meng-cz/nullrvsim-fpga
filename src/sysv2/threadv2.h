@@ -15,7 +15,7 @@
 
 using isa::RVRegArray;
 
-typedef sigset_t TgtSigsetT;
+typedef uint64_t TgtSigsetT;
 
 #ifndef DEFAULT_PID
 #define DEFAULT_PID (10000)

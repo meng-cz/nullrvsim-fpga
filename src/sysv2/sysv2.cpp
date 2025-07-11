@@ -1801,17 +1801,13 @@ SYSCALL_DEFINE_V2(135, sigprocmask) {
     }
     if(set) {
         if(how == SIG_BLOCK) {
-            for(int sn = 0; sn < 64; sn++) {
-                if(sigismember(&buf, sn) > 0) sigaddset(CURT->sig_proc_mask.get(), sn);
-            }
+            *(CURT->sig_proc_mask) |= buf;
         }
         else if(how == SIG_UNBLOCK) {
-            for(int sn = 0; sn < 64; sn++) {
-                if(sigismember(&buf, sn) > 0) sigdelset(CURT->sig_proc_mask.get(), sn);
-            }
+            *(CURT->sig_proc_mask) &= (~buf);
         }
         else if(how == SIG_SETMASK) {
-            memcpy(CURT->sig_proc_mask.get(), &buf, sizeof(TgtSigsetT));
+            *(CURT->sig_proc_mask) = buf;
         }
         else {
             LOG_SYSCALL_3("sigprocmask", "%d", how, "0x%lx", set, "0x%lx", oldset, "%s", "EINVAL");
