@@ -877,6 +877,7 @@ void SMPSystemV2::run_sim() {
             SYSCALL_CASE_V2(260, wait4);
             SYSCALL_CASE_V2(261, prlimit);
             SYSCALL_CASE_V2(278, getrandom);
+            SYSCALL_CASE_V2(435, clone3);
             default:
                 printf("CPU%d Raise an Unkonwn ECALL %ld @0x%lx, arg:0x%lx, 0x%lx, 0x%lx, 0x%lx, 0x%lx, 0x%lx\n",
                 cpu_id, ecallid, pc,
@@ -2347,6 +2348,105 @@ SYSCALL_DEFINE_V2(278, getrandom) {
     }
 
     LOG_SYSCALL_3("getrandom", "0x%lx", buf, "%ld", buflen, "0x%x", flags, "%ld", ret);
+    ECALL_RET(ret, pc+4);
+}
+
+SYSCALL_DEFINE_V2(435, clone3) {
+
+    VirtAddrT target_args = IREG_V(a0);
+
+    struct clone_args args;
+    memset(&args, 0, sizeof(args));
+    if(!_memcpy_from_target(cpu_id, &args, target_args, sizeof(args))) {
+        LOG_SYSCALL_1("clone3", "0x%lx", target_args, "%s", "EFAULT");
+        ECALL_RET(-EFAULT, pc+4);
+    }
+
+    uint64_t clone_flags = args.flags;
+    VirtAddrT newsp = args.stack + args.stack_size;
+    VirtAddrT parent_tid = args.parent_tid;
+    VirtAddrT tls = args.tls;
+    VirtAddrT child_tid = args.child_tid;
+
+    // printf("PGTABLE before CLONE:\n");
+    // CURT->pgtable->debug_print_pgtable();
+
+    _push_context_stack(cpu_id, pc+4);
+
+    sch_lock.lock();
+
+    VirtAddrT ret = cur_tid_alloc++;
+    AsidT asid = cur_asid_alloc++;
+
+    simroot_assertf(asid < MAX_ASID, "ASID run out");
+
+    TgtMemSetList stlist;
+    ThreadV2 *newthread = new ThreadV2(CURT, ret, clone_flags, &stlist);
+    newthread->asid = asid;
+    thread_objs.emplace(newthread->tid, newthread);
+
+    newthread->clear_child_tid = child_tid;
+    if(tls) {
+        newthread->context_stack.back()[ireg_index_of("tp")] = tls;
+    }
+    if(newsp) {
+        newthread->context_stack.back()[ireg_index_of("sp")] = newsp;
+    }
+    newthread->context_stack.back()[ireg_index_of("a0")] = 0;
+    if(clone_flags & CLONE_CHILD_SETTID) {
+        newthread->set_child_tid = child_tid;
+        TgtVMemSet vst;
+        vst.vaddr = child_tid;
+        vst.data.assign(sizeof(ret), 0);
+        memcpy(vst.data.data(), &ret, sizeof(ret));
+        newthread->stlist_on_ready.emplace_back(vst);
+    }
+    if(clone_flags & CLONE_PARENT_SETTID) {
+        _memcpy_to_target(cpu_id, parent_tid, &ret, sizeof(ret));
+    }
+    if(clone_flags & CLONE_CHILD_CLEARTID) {
+        newthread->do_child_cleartid = true;
+        newthread->clear_child_tid = child_tid;
+    }
+    if(clone_flags & CLONE_PARENT) {
+        newthread->parent = CURT->parent;
+    } else {
+        newthread->parent = CURT->tid;
+    }
+    if(newthread->parent) {
+        auto iter = thread_objs.find(newthread->parent);
+        if(iter != thread_objs.end()) iter->second->childs.insert(newthread->tid);
+    }
+    if(clone_flags & CLONE_THREAD) {
+        newthread->tgid = CURT->tgid;
+    } else {
+        newthread->tgid = newthread->tid;
+    }
+    {
+        auto iter = thread_groups.find(newthread->tgid);
+        if(iter == thread_groups.end()) iter = thread_groups.emplace(newthread->tgid, vector<uint64_t>()).first;
+        iter->second.push_back(newthread->tid);
+    }
+
+    for(auto & st : stlist) {
+        _perform_target_memset(cpu_id, st);
+    }
+    if(!stlist.empty()) {
+        cpus->flush_tlb_all(cpu_id);
+    }
+
+    insert_ready_thread_and_execute(newthread, cpu_id);
+
+    sch_lock.unlock();
+
+    // printf("\nPGTABLE 1 after CLONE:\n");
+    // CURT->pgtable->debug_print_pgtable();
+    // printf("\nPGTABLE 2 after CLONE:\n");
+    // newthread->pgtable->debug_print_pgtable();
+
+    CURT->context_stack.pop_back();
+
+    LOG_SYSCALL_5("clone3", "0x%lx", clone_flags, "0x%lx", newsp, "0x%lx", parent_tid, "0x%lx", tls, "0x%lx", child_tid, "%ld", ret);
     ECALL_RET(ret, pc+4);
 }
 
