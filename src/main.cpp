@@ -17,7 +17,7 @@
 
 #define ASSERT_MORE_ARGS(vec, num, info) {if(vec.size() < num){ printf("Args %s:  \"%s\"\n", #vec,  info); return;}};
 
-#define PRINT_ARGS(vec) { std::cout << #vec": "; for(auto &e : vec) std::cout << e << " , "; std::cout << std::endl;};
+#define PRINT_ARGS(vec) {if(vec.size()){ std::cout << #vec": "; for(auto &e : vec) std::cout << e << " , "; std::cout << std::endl;}};
 
 void execution();
 
@@ -36,6 +36,7 @@ struct {
     std::vector<string> workload;
     std::vector<int> integers;
     std::vector<float> floats;
+    std::vector<string> envs;
 } parsed_args;
 
 int main(int argc, char* argv[]) {
@@ -43,7 +44,7 @@ int main(int argc, char* argv[]) {
     srand(get_current_time_us());
 
     auto print_help_and_exit = [=]()->void {
-        printf("Usage: %s operation [[-c configs] [-s str_args] [-i int_args] [-f float_args] ...] [-w workload argvs]\n", argv[0]);
+        printf("Usage: %s operation [[-c configs] [-s str_args] [-e envs] ...] [-w workload argvs]\n", argv[0]);
         exit(0);
     };
 
@@ -80,6 +81,9 @@ int main(int argc, char* argv[]) {
         case 'f':
             parsed_args.floats.push_back(atof(argv[i+1]));
             break;
+        case 'e':
+            parsed_args.envs.push_back(argv[i+1]);
+            break;
         default:
             print_help_and_exit();
         }
@@ -111,21 +115,23 @@ void execution() {
     vector<float> &F = parsed_args.floats;
     vector<string> &S = parsed_args.strings;
     vector<string> &W = parsed_args.workload;
+    vector<string> &E = parsed_args.envs;
     PRINT_ARGS(I);
     PRINT_ARGS(F);
     PRINT_ARGS(S);
     PRINT_ARGS(W);
+    PRINT_ARGS(E);
 
 
     OPERATION(op, "sim", {
         ASSERT_MORE_ARGS(W, 1, "elf_path")
-        TEST(mpv2(W));
+        TEST(mpv2(W, E));
     });
 
     OPERATION(op, "serial", {
         ASSERT_MORE_ARGS(W, 1, "elf_path")
         ASSERT_MORE_ARGS(S, 1, "dev_path")
-        TEST(mpser(S[0], W));
+        TEST(mpser(S[0], W, E));
     });
 
 

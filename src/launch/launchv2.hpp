@@ -10,17 +10,22 @@
 
 using simcpu::AtomicSMPCores;
 
-bool mpv2(std::vector<string> &argv) {
-    SimWorkload workload;
+void parse_workload(SimWorkload &workload, std::vector<string> &argv, vector<string> &envs) {
     workload.argv.assign(argv.begin(), argv.end());
     workload.file_path = argv[0];
     workload.stack_size = (uint64_t)(conf::get_int("workload", "stack_size_mb", 8)) * 1024UL * 1024UL;
+    workload.envs.assign(envs.begin(), envs.end());
+    for(auto &e : workload.envs) {
+        uint64_t eqpos = e.find('=');
+        simroot_assertf(eqpos != string::npos, "Bad Env: %s", e.c_str());
+        simroot_assertf(e.substr(0, eqpos).compare("LD_LIBRARY_PATH"), "Should NOT Set LD_LIBRARY_PATH in ENVS, use conf file instead");
+    }
     workload.envs.emplace_back(string("LD_LIBRARY_PATH=") + conf::get_str("workload", "ld_path", ""));
     string ldpath = conf::get_str("workload", "ld_path", "");
     {
         std::stringstream ss(ldpath);
         string item = "";
-        while (std::getline(ss, item, ';')) {
+        while (std::getline(ss, item, ':')) {
             if (!item.empty()) {
                 workload.ldpaths.push_back(item);
             }
@@ -29,6 +34,11 @@ bool mpv2(std::vector<string> &argv) {
             }
         }
     }
+}
+
+bool mpv2(std::vector<string> &argv, vector<string> &envs) {
+    SimWorkload workload;
+    parse_workload(workload, argv, envs);
 
     uint32_t cpu_num = conf::get_int("root", "core_num", 1);
     simroot_assert(cpu_num > 0 && cpu_num <= 256);
@@ -52,25 +62,9 @@ bool mpv2(std::vector<string> &argv) {
     return true;
 }
 
-bool mpser(string devpath, vector<string> &argv) {
+bool mpser(string devpath, vector<string> &argv, vector<string> &envs) {
     SimWorkload workload;
-    workload.argv.assign(argv.begin(), argv.end());
-    workload.file_path = argv[0];
-    workload.stack_size = (uint64_t)(conf::get_int("workload", "stack_size_mb", 8)) * 1024UL * 1024UL;
-    workload.envs.emplace_back(string("LD_LIBRARY_PATH=") + conf::get_str("workload", "ld_path", ""));
-    string ldpath = conf::get_str("workload", "ld_path", "");
-    {
-        std::stringstream ss(ldpath);
-        string item = "";
-        while (std::getline(ss, item, ':')) {
-            if (!item.empty()) {
-                workload.ldpaths.push_back(item);
-            }
-            else {
-                break;
-            }
-        }
-    }
+    parse_workload(workload, argv, envs);
 
     uint32_t cpu_num = conf::get_int("root", "core_num", 1);
     simroot_assert(cpu_num > 0 && cpu_num <= 256);
