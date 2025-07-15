@@ -260,6 +260,7 @@ protected:
     SYSCALL_CLAIM_V2(48, faccessat);
     SYSCALL_CLAIM_V2(56, openat);
     SYSCALL_CLAIM_V2(57, close);
+    SYSCALL_CLAIM_V2(61, getdents);
     SYSCALL_CLAIM_V2(62, lseek);
     SYSCALL_CLAIM_V2(63, read);
     SYSCALL_CLAIM_V2(64, write);
@@ -275,6 +276,8 @@ protected:
     SYSCALL_CLAIM_V2(99, set_robust_list);
     SYSCALL_CLAIM_V2(113, clock_gettime);
     SYSCALL_CLAIM_V2(115, clock_nanosleep);
+    SYSCALL_CLAIM_V2(122, sched_setaffinity);
+    SYSCALL_CLAIM_V2(123, sched_getaffinity);
     SYSCALL_CLAIM_V2(124, sched_yield);
     SYSCALL_CLAIM_V2(134, sigaction);
     SYSCALL_CLAIM_V2(135, sigprocmask);
@@ -299,6 +302,7 @@ protected:
     SYSCALL_CLAIM_V2(261, prlimit);
     SYSCALL_CLAIM_V2(278, getrandom);
     SYSCALL_CLAIM_V2(435, clone3);
+
     
     VirtAddrT _page_fault_rx(uint32_t cpu_id, VirtAddrT pc, VirtAddrT badaddr, bool isx);
     VirtAddrT _page_fault_w(uint32_t cpu_id, VirtAddrT pc, VirtAddrT badaddr);

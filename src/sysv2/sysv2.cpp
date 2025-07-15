@@ -16,6 +16,7 @@
 #include <sys/ioctl.h>
 #include <sys/socket.h>
 #include <sys/sysinfo.h>
+#include <sys/syscall.h>
 
 #include <net/if.h>
 
@@ -839,6 +840,7 @@ void SMPSystemV2::run_sim() {
             SYSCALL_CASE_V2(48, faccessat);
             SYSCALL_CASE_V2(56, openat);
             SYSCALL_CASE_V2(57, close);
+            SYSCALL_CASE_V2(61, getdents);
             SYSCALL_CASE_V2(62, lseek);
             SYSCALL_CASE_V2(63, read);
             SYSCALL_CASE_V2(64, write);
@@ -854,6 +856,8 @@ void SMPSystemV2::run_sim() {
             SYSCALL_CASE_V2(99, set_robust_list);
             SYSCALL_CASE_V2(113, clock_gettime);
             SYSCALL_CASE_V2(115, clock_nanosleep);
+            SYSCALL_CASE_V2(122, sched_setaffinity);
+            SYSCALL_CASE_V2(123, sched_getaffinity);
             SYSCALL_CASE_V2(124, sched_yield);
             SYSCALL_CASE_V2(134, sigaction);
             SYSCALL_CASE_V2(135, sigprocmask);
@@ -1064,6 +1068,33 @@ SYSCALL_DEFINE_V2(57, close) {
     }
     LOG_SYSCALL_1("close", "%d", usr_fd, "%d", 0);
     ECALL_RET(0, pc+4);
+}
+
+SYSCALL_DEFINE_V2(61, getdents) {
+    int32_t usr_fd = IREG_V(a0);
+    VirtAddrT dirp = IREG_V(a1);
+    uint64_t count = IREG_V(a2);
+
+    FileDescriptor *fd = CURT->fdtable_trans(usr_fd);
+    if(fd == nullptr) {
+        LOG_SYSCALL_3("getdents", "%d", usr_fd, "0x%lx", dirp, "0x%lx", count, "%s", "EBADF");
+        ECALL_RET(-EBADF, pc+4);
+    }
+
+    vector<uint64_t> hbuf;
+    hbuf.assign(CEIL_DIV(count, 8), 0);
+
+    int64_t ret = syscall(SYS_getdents, fd->host_fd, hbuf.data(), count);
+    if(ret > 0 && !_memcpy_to_target(cpu_id, dirp, hbuf.data(), ALIGN(ret, 8))) {
+        LOG_SYSCALL_3("getdents", "%d", usr_fd, "0x%lx", dirp, "0x%lx", count, "%s", "EFAULT");
+        ECALL_RET(-EFAULT, pc+4);
+    }
+    if(ret < 0) {
+        ret = -errno;
+    }
+
+    LOG_SYSCALL_3("getdents", "%d", usr_fd, "0x%lx", dirp, "0x%lx", count, "%ld", ret);
+    ECALL_RET(ret, pc+4);
 }
 
 SYSCALL_DEFINE_V2(62, lseek) {
@@ -1737,9 +1768,19 @@ SYSCALL_DEFINE_V2(115, clock_nanosleep) {
     return nextpc;
 }
 
+SYSCALL_DEFINE_V2(122, sched_setaffinity) {
+    //TODO
+    LOG_SYSCALL_1("(X)sched_setaffinity", "%ld", IREG_V(a0), "%ld", 0UL);
+    ECALL_RET(0, pc+4);
+}
+SYSCALL_DEFINE_V2(123, sched_getaffinity) {
+    //TODO
+    LOG_SYSCALL_1("(X)sched_getaffinity", "%ld", IREG_V(a0), "%ld", 0UL);
+    ECALL_RET(0, pc+4);
+}
 SYSCALL_DEFINE_V2(124, sched_yield) {
     //TODO
-    LOG_SYSCALL_1("sched_yield", "%ld", IREG_V(a0), "%ld", 0UL);
+    LOG_SYSCALL_1("(X)sched_yield", "%ld", IREG_V(a0), "%ld", 0UL);
     ECALL_RET(0, pc+4);
 }
 
