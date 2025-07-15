@@ -7,7 +7,10 @@ import chisel3.util._
 
 class NulCPUCtrlMP(cpunum: Int) extends Module {
 
-    assert(cpunum > 0)
+    val is_sv48 = false
+    val is_hard_fp = true
+
+    assert(cpunum > 1)
     val cpunum_bitwid = log2Ceil(cpunum)
 
     val io = IO(new Bundle {
@@ -70,8 +73,6 @@ class NulCPUCtrlMP(cpunum: Int) extends Module {
         cpu_raised_itr(event_idx) := false.B
     }
     
-    val is_sv48 = false
-
     val SEROP_NEXT  = 0.U
     val SEROP_HALT  = 1.U
     val SEROP_ITR   = 2.U
@@ -89,6 +90,7 @@ class NulCPUCtrlMP(cpunum: Int) extends Module {
     val SEROP_PGWT  = 14.U
     val SEROP_PGCP  = 15.U
     val SEROP_CLK   = 16.U
+    val SEROP_UCLK  = 17.U
     val SEROP_INST  = 20.U
 
     val STATE_INIT_WAIT     = 0.U 
@@ -128,15 +130,10 @@ class NulCPUCtrlMP(cpunum: Int) extends Module {
     val opidx = Cat(oparg(1), oparg(0))(cpunum_bitwid-1, 0)
     val sel_cpu = io.cpu(opidx)
 
-    val all_inited = io.cpu.map(_.inited).reduce(_||_)
-    val init_timer_cnt = RegInit(0.U(30.W))
-    when(state === STATE_INIT_WAIT) {
-        when(init_timer_cnt < 250000000.U) {
-            init_timer_cnt := init_timer_cnt + 1.U
-        }.elsewhen(all_inited) {
-            state := STATE_DO_INIT
-            for(i <- 0 until cpunum) { cpu_state(i) := CPU_HALT }
-        }
+    val all_inited = io.cpu.map(_.inited).reduce(_&&_)
+    when(state === STATE_INIT_WAIT && all_inited) {
+        state := STATE_DO_INIT
+        for(i <- 0 until cpunum) { cpu_state(i) := CPU_HALT }
     }
 
     when(state === STATE_RECV_HEAD && io.rx.valid) {
@@ -145,7 +142,7 @@ class NulCPUCtrlMP(cpunum: Int) extends Module {
         opcode := rxop
         opoff := rxoff
 
-        when(rxop === SEROP_HALT || rxop === SEROP_ITR || rxop === SEROP_FTLB || rxop === SEROP_SYNCI) {
+        when(rxop === SEROP_HALT || rxop === SEROP_ITR || rxop === SEROP_FTLB || rxop === SEROP_SYNCI || rxop === SEROP_UCLK) {
             trans_bytes := 2.U 
         }.elsewhen(rxop === SEROP_REGRD) {
             trans_bytes := 4.U 
@@ -202,6 +199,11 @@ class NulCPUCtrlMP(cpunum: Int) extends Module {
                     retarg(i) := global_clk(i*8+7, i*8)
                 }
             }
+            is(SEROP_UCLK) {
+                for(i <- 0 to 7) {
+                    retarg(i) := user_clk(opidx)(i*8+7, i*8)
+                }
+            }
             is(SEROP_INST) { state := STATE_INST }
         }
     }.elsewhen(state === STATE_RECV_ARG && io.rx.valid) {
@@ -217,13 +219,7 @@ class NulCPUCtrlMP(cpunum: Int) extends Module {
             when(opcode === SEROP_NEXT) {
                 trans_bytes := 15.U
                 state := STATE_SEND_ARG
-            }.elsewhen(opcode === SEROP_REGRD) {
-                trans_bytes := 8.U
-                state := STATE_SEND_ARG
-            }.elsewhen(opcode === SEROP_MEMRD) {
-                trans_bytes := 8.U
-                state := STATE_SEND_ARG
-            }.elsewhen(opcode === SEROP_CLK) {
+            }.elsewhen(opcode === SEROP_REGRD || opcode === SEROP_MEMRD || opcode === SEROP_CLK || opcode === SEROP_UCLK) {
                 trans_bytes := 8.U
                 state := STATE_SEND_ARG
             }.otherwise {
@@ -247,7 +243,7 @@ class NulCPUCtrlMP(cpunum: Int) extends Module {
         }
     }
 
-    val perform_next_idx = RegInit(0.U(cpunum_bitwid.W))
+    val all_halted = cpu_state.forall(_ === CPU_HALT)
 
     event_queue.io.deq.ready := (state === STATE_WAIT_NEXT)
     when(state === STATE_WAIT_NEXT && event_queue.io.deq.valid) {
@@ -257,12 +253,16 @@ class NulCPUCtrlMP(cpunum: Int) extends Module {
         retarg(0) := pending_next_idx(7,0)
         retarg(1) := pending_next_idx(15,8)
         state := STATE_NEXT
+    }.elsewhen(state === STATE_WAIT_NEXT && all_halted) {
+        retarg(0) := "hff".U
+        retarg(1) := "hff".U
+        state := STATE_SEND_HEAD
     }
 
     val cnt = RegInit(1.U(128.W))
     val regback = RegInit(VecInit(Seq.fill(10)(0.U(64.W))))
 
-    val reg_idxs = Array(5.U, 6.U, 7.U, 8.U, 9.U, 18.U, 19.U, 20.U, 21.U, 22.U)
+    val reg_idxs = Array(5.U, 6.U, 7.U, 8.U, 9.U, 10.U, 11.U, 12.U, 13.U, 14.U)
 
     def read_reg(idx: Int, dst: UInt) {
         sel_cpu.regacc_rd := true.B
@@ -336,12 +336,27 @@ class NulCPUCtrlMP(cpunum: Int) extends Module {
 
     val init_cnt = RegInit(0.U(cpunum_bitwid.W))
     when(state === STATE_DO_INIT) {
-        when(cnt(0)) { write_reg(2, def_pmp_cfg) }
-        when(cnt(1)) { write_reg(3, def_pmp_addr) }
-        when(cnt(2)) { invoke_inst("h3a039073".U) } // csrrw x0, pmpcfg0, x7
-        when(cnt(3)) { invoke_inst("h3b041073".U) } // csrrw x0, pmpaddr0, x8
-        when(cnt(4)) { wait_inst() }
+        when(cnt(0)) { cnt := (cnt << 1.U) }
+        when(cnt(1)) { write_reg(2, def_pmp_cfg) }
+        when(cnt(2)) { write_reg(3, def_pmp_addr) }
+        when(cnt(3)) { invoke_inst("h3a039073".U) } // csrrw x0, pmpcfg0, x7
+        when(cnt(4)) { invoke_inst("h3b041073".U) } // csrrw x0, pmpaddr0, x8
         when(cnt(5)) {
+            if(is_hard_fp) {
+                invoke_inst("h000022b7".U) // lui	x5,0x2
+            } else {
+                cnt := (cnt << 1)
+            }
+        }
+        when(cnt(6)) {
+            if(is_hard_fp) {
+                invoke_inst("h3002a073".U) // csrs	mstatus,x5
+            } else {
+                cnt := (cnt << 1)
+            }
+        }
+        when(cnt(7)) { wait_inst() }
+        when(cnt(8)) {
             cnt := 1.U 
             when(init_cnt === (cpunum - 1).U) {
                 state := STATE_RECV_HEAD
@@ -478,21 +493,42 @@ class NulCPUCtrlMP(cpunum: Int) extends Module {
         when(cnt(4)) { invoke_inst("h00300293".U) } // addi x5, x0, 3
         when(cnt(5)) { invoke_inst("h00b29293".U) } // slli x5, x5, 11
         when(cnt(6)) { invoke_inst("h3002b073".U) } // csrrc x0, mstatus, x5
-        when(cnt(7)) { invoke_inst("h0330000f".U) } // fence rw, rw
-        when(cnt(8)) { wait_inst() }
-        recover_regs(9, 2)
-        when(cnt(11)) {
+        when(cnt(7)) {
+            if(is_hard_fp) {
+                invoke_inst("h000022b7".U) // lui	x5,0x2
+            } else {
+                cnt := (cnt << 1)
+            }
+        }
+        when(cnt(8)) {
+            if(is_hard_fp) {
+                invoke_inst("h3002a073".U) // csrs	mstatus,x5
+            } else {
+                cnt := (cnt << 1)
+            }
+        }
+        when(cnt(9)) {
+            if(is_hard_fp) {
+                invoke_inst("h00301073".U) // csrrw x0, fcsr, x0
+            } else {
+                cnt := (cnt << 1)
+            }
+        }
+        when(cnt(10)) { invoke_inst("h0330000f".U) } // fence rw, rw
+        when(cnt(11)) { wait_inst() }
+        recover_regs(12, 2)
+        when(cnt(14)) {
             sel_cpu.inst64_nowait := true.B
             invoke_inst("h30200073".U)
             when(sel_cpu.inst64_ready) {
                 cpu_state(opidx) := CPU_USER
             }
         } // mret
-        when(cnt(12)) {
+        when(cnt(15)) {
             sel_cpu.inst64_flush := true.B 
             cnt := (cnt << 1)
         }
-        when(cnt(13)) {
+        when(cnt(16)) {
             cnt := 1.U 
             state := STATE_SEND_HEAD
         }
@@ -502,10 +538,11 @@ class NulCPUCtrlMP(cpunum: Int) extends Module {
         backup_regs(0, 2)
         when(cnt(2)) { write_reg_from_oparg(0, 2, 6) }
         when(cnt(3)) { invoke_inst("h0002b303".U) } // ld x6, 0(x5)
-        when(cnt(4)) { wait_inst() }
-        when(cnt(5)) { read_reg_to_retarg(1, 0, 8) }
-        recover_regs(6, 2)
-        when(cnt(8)) {
+        when(cnt(4)) { invoke_inst("h0330000f".U) } // fence rw, rw
+        when(cnt(5)) { wait_inst() }
+        when(cnt(6)) { read_reg_to_retarg(1, 0, 8) }
+        recover_regs(7, 2)
+        when(cnt(9)) {
             cnt := 1.U
             state := STATE_SEND_HEAD
         }
@@ -516,24 +553,33 @@ class NulCPUCtrlMP(cpunum: Int) extends Module {
         when(cnt(2)) { write_reg_from_oparg(0, 2, 6) }
         when(cnt(3)) { write_reg_from_oparg(1, 8, 8) }
         when(cnt(4)) { invoke_inst("h0062b023".U) } // sd x6, 0(x5)
-        when(cnt(5)) { wait_inst() }
-        recover_regs(6, 2)
-        when(cnt(8)) {
+        when(cnt(5)) { invoke_inst("h0330000f".U) } // fence rw, rw
+        when(cnt(6)) { wait_inst() }
+        recover_regs(7, 2)
+        when(cnt(9)) {
             cnt := 1.U
             state := STATE_SEND_HEAD
         }
     }
 
-    val _pg_base_addr = Wire(Vec(5, UInt(8.W)))
+    val _ppn_from_arg2 = Wire(Vec(5, UInt(8.W)))
     for(i <- 0 to 4) {
-        _pg_base_addr(i) := oparg(2+i)
+        _ppn_from_arg2(i) := oparg(2+i)
     }
-    val pg_base_addr = Cat((0.U(12.W)), _pg_base_addr.asUInt(), (0.U(12.W)))
-    val pg_loop_cnt = RegInit(0.U(7.W))
+    val pg_base_addr2 = Cat((0.U(12.W)), oparg(6), oparg(5), oparg(4), oparg(3), oparg(2), (0.U(12.W)))
+
+    val _ppn_from_arg7 = Wire(Vec(5, UInt(8.W)))
+    for(i <- 0 to 4) {
+        _ppn_from_arg7(i) := oparg(7+i)
+    }
+    val pg_base_addr7 = Cat((0.U(12.W)), oparg(11), oparg(10), oparg(9), oparg(8), oparg(7), (0.U(12.W)))
+
+    val pg_loop_cnt = RegInit(0.U(8.W))
+
 
     when(state === STATE_PGST) {
         backup_regs(0, 2)
-        when(cnt(2)) { write_reg(0, pg_base_addr) }
+        when(cnt(2)) { write_reg(0, pg_base_addr2) }
         when(cnt(3)) { write_reg_from_oparg(1, 7, 8) }
         when(cnt(4)) { invoke_inst("h0062b023".U) } // sd x6, 0(x5)
         when(cnt(5)) { invoke_inst("h0062b423".U) } // sd x6, 8(x5)
@@ -546,7 +592,7 @@ class NulCPUCtrlMP(cpunum: Int) extends Module {
         when(cnt(12)) { invoke_inst("h04028293".U) } // addi x5, x5, 64
         when(cnt(13)) { wait_inst() }
         when(cnt(14)) {
-            when(pg_loop_cnt < 63.U) {
+            when(pg_loop_cnt =/= 63.U) {
                 cnt := (1.U << 4)
                 pg_loop_cnt := pg_loop_cnt + 1.U 
             }.otherwise {
@@ -554,41 +600,37 @@ class NulCPUCtrlMP(cpunum: Int) extends Module {
                 pg_loop_cnt := 0.U
             }
         }
-        recover_regs(15, 2)
-        when(cnt(17)) {
+        when(cnt(15)) { invoke_inst("h0330000f".U) } // fence rw, rw
+        when(cnt(16)) { wait_inst() }
+        recover_regs(17, 2)
+        when(cnt(19)) {
             cnt := 1.U
             state := STATE_SEND_HEAD
         }
     }
 
-    val _srcpg_base_addr = Wire(Vec(5, UInt(8.W)))
-    for(i <- 0 to 4) {
-        _srcpg_base_addr(i) := oparg(7+i)
-    }
-    val srcpg_base_addr = Cat((0.U(12.W)), _srcpg_base_addr.asUInt(), (0.U(12.W)))
-
     when(state === STATE_PGCP) {
         backup_regs(0, 10)
-        when(cnt(10)) { write_reg(0, srcpg_base_addr) }
-        when(cnt(11)) { write_reg(9, pg_base_addr) }
+        when(cnt(10)) { write_reg(0, pg_base_addr7) }
+        when(cnt(11)) { write_reg(9, pg_base_addr2) }
         when(cnt(12)) { invoke_inst("h0002b303".U) } // ld x6, 0(x5)
         when(cnt(13)) { invoke_inst("h0082b383".U) } // ld x7, 8(x5)
         when(cnt(14)) { invoke_inst("h0102b403".U) } // ld x8, 16(x5)
         when(cnt(15)) { invoke_inst("h0182b483".U) } // ld x9, 24(x5)
-        when(cnt(16)) { invoke_inst("h0202b903".U) } // ld x18, 32(x5)
-        when(cnt(17)) { invoke_inst("h0282b983".U) } // ld x19, 40(x5)
-        when(cnt(18)) { invoke_inst("h0302ba03".U) } // ld x20, 48(x5)
-        when(cnt(19)) { invoke_inst("h0382ba83".U) } // ld x21, 56(x5)
-        when(cnt(20)) { invoke_inst("h006b3023".U) } // sd x6, 0(x22)
-        when(cnt(21)) { invoke_inst("h007b3423".U) } // sd x7, 8(x22)
-        when(cnt(22)) { invoke_inst("h008b3823".U) } // sd x8, 16(x22)
-        when(cnt(23)) { invoke_inst("h009b3c23".U) } // sd x9, 24(x22)
-        when(cnt(24)) { invoke_inst("h032b3023".U) } // sd x18, 32(x22)
-        when(cnt(25)) { invoke_inst("h033b3423".U) } // sd x19, 40(x22)
-        when(cnt(26)) { invoke_inst("h034b3823".U) } // sd x20, 48(x22)
-        when(cnt(27)) { invoke_inst("h035b3c23".U) } // sd x21, 56(x22)
+        when(cnt(16)) { invoke_inst("h0202b503".U) } // ld x10, 32(x5)
+        when(cnt(17)) { invoke_inst("h0282b583".U) } // ld x11, 40(x5)
+        when(cnt(18)) { invoke_inst("h0302b603".U) } // ld x12, 48(x5)
+        when(cnt(19)) { invoke_inst("h0382b683".U) } // ld x13, 56(x5)
+        when(cnt(20)) { invoke_inst("h00673023".U) } // sd x6, 0(x14)
+        when(cnt(21)) { invoke_inst("h00773423".U) } // sd x7, 8(x14)
+        when(cnt(22)) { invoke_inst("h00873823".U) } // sd x8, 16(x14)
+        when(cnt(23)) { invoke_inst("h00973c23".U) } // sd x9, 24(x14)
+        when(cnt(24)) { invoke_inst("h02a73023".U) } // sd x10, 32(x14)
+        when(cnt(25)) { invoke_inst("h02b73423".U) } // sd x11, 40(x14)
+        when(cnt(26)) { invoke_inst("h02c73823".U) } // sd x12, 48(x14)
+        when(cnt(27)) { invoke_inst("h02d73c23".U) } // sd x13, 56(x14)
         when(cnt(28)) { invoke_inst("h04028293".U) } // addi x5, x5, 64
-        when(cnt(29)) { invoke_inst("h040b0b13".U) } // addi x22, x22, 64
+        when(cnt(29)) { invoke_inst("h04070713".U) } // addi x14, x14, 64
         when(cnt(30)) { wait_inst() }
         when(cnt(31)) {
             when(pg_loop_cnt < 63.U) {
@@ -599,22 +641,18 @@ class NulCPUCtrlMP(cpunum: Int) extends Module {
                 pg_loop_cnt := 0.U
             }
         }
-        recover_regs(32, 10)
-        when(cnt(42)) {
+        when(cnt(32)) { invoke_inst("h0330000f".U) } // fence rw, rw
+        when(cnt(33)) { wait_inst() }
+        recover_regs(34, 10)
+        when(cnt(44)) {
             cnt := 1.U
             state := STATE_SEND_HEAD
         }
     }
 
     val pgbuf_div8 = RegInit(VecInit(Seq.fill(64)(0.U(64.W))))
-    val pgbuf_push_pos = RegInit(0.U(12.W))
-    val pgbuf_pop_pos = RegInit(0.U(12.W))
-
-    val _pgdiv8_base_addr = Wire(Vec(5, UInt(8.W)))
-    for(i <- 0 to 4) {
-        _pgdiv8_base_addr(i) := oparg(2+i)
-    }
-    val pgdiv8_base_addr = Cat((0.U(12.W)), _pgdiv8_base_addr.asUInt(), opoff, (0.U(9.W)))
+    val pgbuf_uart_pos = RegInit(0.U(12.W))
+    val pgbuf_cpu_pos = RegInit(0.U(12.W))
 
     when(state === STATE_PGRD) {
         backup_regs(0, 9)
@@ -625,90 +663,103 @@ class NulCPUCtrlMP(cpunum: Int) extends Module {
                 cnt := (cnt << 1)
             }
         }
-        when(cnt(10)) { write_reg(0, pgdiv8_base_addr) }
+        when(cnt(10)) { write_reg(0, pg_base_addr2 | (opoff << 9)) }
         when(cnt(11)) { invoke_inst("h0002b303".U) } // ld x6, 0(x5)
         when(cnt(12)) { invoke_inst("h0082b383".U) } // ld x7, 8(x5)
         when(cnt(13)) { invoke_inst("h0102b403".U) } // ld x8, 16(x5)
         when(cnt(14)) { invoke_inst("h0182b483".U) } // ld x9, 24(x5)
-        when(cnt(15)) { invoke_inst("h0202b903".U) } // ld x18, 32(x5)
-        when(cnt(16)) { invoke_inst("h0282b983".U) } // ld x19, 40(x5)
-        when(cnt(17)) { invoke_inst("h0302ba03".U) } // ld x20, 48(x5)
-        when(cnt(18)) { invoke_inst("h0382ba83".U) } // ld x21, 56(x5)
-        when(cnt(19)) { wait_inst() }
+        when(cnt(15)) { invoke_inst("h0202b503".U) } // ld x10, 32(x5)
+        when(cnt(16)) { invoke_inst("h0282b583".U) } // ld x11, 40(x5)
+        when(cnt(17)) { invoke_inst("h0302b603".U) } // ld x12, 48(x5)
+        when(cnt(18)) { invoke_inst("h0382b683".U) } // ld x13, 56(x5)
+        when(cnt(19)) { invoke_inst("h04028293".U) } // addi x5, x5, 64
+        when(cnt(20)) { wait_inst() }
         for(i <- 0 to 7) {
-            when(cnt(20+i)) { read_reg(1+i, pgbuf_div8((pgbuf_push_pos >> 3) + i.U)) }
+            when(cnt(21+i)) { read_reg(1+i, pgbuf_div8((pgbuf_cpu_pos >> 3) + i.U)) }
         }
-        when(cnt(28)) {
-            when(pgbuf_push_pos === 448.U) {
-                cnt := (1.U << 31)
-            }.otherwise {
+        when(cnt(29)) {
+            when(pgbuf_cpu_pos === 448.U) {
                 cnt := (cnt << 1)
+            }.otherwise {
+                cnt := (1.U << 11)
             }
-            pgbuf_push_pos := pgbuf_push_pos + 64.U
+            pgbuf_cpu_pos := pgbuf_cpu_pos + 64.U
         }
-        when(cnt(29)) { invoke_inst("h04028293".U) } // addi x5, x5, 64
-        when(cnt(30)) { cnt := (1.U << 11) }
-        recover_regs(31, 9)
-        when(cnt(40)) {
-            when(pgbuf_push_pos === pgbuf_pop_pos) {
+        when(cnt(30)) { invoke_inst("h0330000f".U) } // fence rw, rw
+        when(cnt(31)) { wait_inst() }
+        recover_regs(32, 9)
+        when(cnt(41)) {
+            when(pgbuf_cpu_pos === pgbuf_uart_pos) {
                 cnt := 1.U 
                 state := STATE_RECV_HEAD
-                pgbuf_pop_pos := 0.U 
-                pgbuf_push_pos := 0.U 
+                pgbuf_cpu_pos := 0.U 
+                pgbuf_uart_pos := 0.U 
             }
         }
 
-        when(cnt(9, 0) === 0.U && pgbuf_push_pos > pgbuf_pop_pos) {
+        when(cnt(9, 0) === 0.U && pgbuf_cpu_pos > pgbuf_uart_pos) {
             io.tx.valid := true.B 
-            io.tx.bits := (pgbuf_div8(pgbuf_pop_pos >> 3) >> (pgbuf_pop_pos(2,0) << 3))(7, 0)
+            val word = pgbuf_div8(pgbuf_uart_pos >> 3)
+            val shift = (pgbuf_uart_pos(2,0) * 8.U)
+            io.tx.bits := (word >> shift)(7, 0)
             when(io.tx.ready) {
-                pgbuf_pop_pos := pgbuf_pop_pos + 1.U
+                pgbuf_uart_pos := pgbuf_uart_pos + 1.U
             }
         }
     }
 
+    val wt_byte_cnt = RegInit(0.U(4.W))
+    val wt_byte_buf = RegInit(VecInit(Seq.fill(8)(0.U(8.W))))
+
     when(state === STATE_PGWT) {
-        when(io.rx.valid && pgbuf_push_pos < 512.U) {
-            val shift_bits = (pgbuf_push_pos(2,0) << 3)
-            val masks = (255.U(8.W) << shift_bits)
-            pgbuf_div8(pgbuf_push_pos >> 3) := (pgbuf_div8(pgbuf_push_pos >> 3) & (~masks)) | (io.rx.bits << shift_bits)
-            pgbuf_push_pos := pgbuf_push_pos + 1.U
+        when(io.rx.valid && pgbuf_uart_pos =/= 512.U) {
+            wt_byte_buf(wt_byte_cnt) := io.rx.bits
+            when(wt_byte_cnt === 7.U) {
+                wt_byte_cnt := 0.U
+                pgbuf_div8(pgbuf_uart_pos >> 3) := Cat(io.rx.bits, wt_byte_buf(6), wt_byte_buf(5), wt_byte_buf(4), wt_byte_buf(3), wt_byte_buf(2), wt_byte_buf(1), wt_byte_buf(0))
+                pgbuf_uart_pos := pgbuf_uart_pos + 8.U
+            }.otherwise {
+                wt_byte_cnt := wt_byte_cnt + 1.U 
+            }
         }
 
         backup_regs(0, 9)
-        when(cnt(9)) { write_reg(0, pgdiv8_base_addr) }
+        when(cnt(9)) { write_reg(0, pg_base_addr2 | (opoff << 9)) }
         when(cnt(10)) {
-            when(pgbuf_push_pos >= pgbuf_pop_pos + 64.U) {
+            when(pgbuf_uart_pos >= pgbuf_cpu_pos + 64.U) {
                 cnt := (cnt << 1)
             }
         }
         for(i <- 0 to 7) {
-            when(cnt(11+i)) { write_reg(1+i, pgbuf_div8((pgbuf_pop_pos >> 3) + i.U)) }
+            when(cnt(11+i)) { write_reg(1+i, pgbuf_div8((pgbuf_cpu_pos >> 3) + i.U)) }
         }
         when(cnt(19)) { invoke_inst("h0062b023".U) } // sd x6, 0(x5)
         when(cnt(20)) { invoke_inst("h0072b423".U) } // sd x7, 8(x5)
         when(cnt(21)) { invoke_inst("h0082b823".U) } // sd x8, 16(x5)
         when(cnt(22)) { invoke_inst("h0092bc23".U) } // sd x9, 24(x5)
-        when(cnt(23)) { invoke_inst("h0322b023".U) } // sd x18, 32(x5)
-        when(cnt(24)) { invoke_inst("h0332b423".U) } // sd x19, 40(x5)
-        when(cnt(25)) { invoke_inst("h0342b823".U) } // sd x20, 48(x5)
-        when(cnt(26)) { invoke_inst("h0352bc23".U) } // sd x21, 56(x5)
+        when(cnt(23)) { invoke_inst("h02a2b023".U) } // sd x10, 32(x5)
+        when(cnt(24)) { invoke_inst("h02b2b423".U) } // sd x11, 40(x5)
+        when(cnt(25)) { invoke_inst("h02c2b823".U) } // sd x12, 48(x5)
+        when(cnt(26)) { invoke_inst("h02d2bc23".U) } // sd x13, 56(x5)
         when(cnt(27)) { invoke_inst("h04028293".U) } // addi x5, x5, 64
         when(cnt(28)) { wait_inst() }
         when(cnt(29)) {
-            when(pgbuf_pop_pos === 448.U) {
+            when(pgbuf_cpu_pos === 448.U) {
                 cnt := (cnt << 1)
             }.otherwise {
                 cnt := (1.U << 10)
             }
-            pgbuf_pop_pos := pgbuf_pop_pos + 64.U
+            pgbuf_cpu_pos := pgbuf_cpu_pos + 64.U
         }
-        recover_regs(30, 9)
-        when(cnt(39)) {
+        when(cnt(30)) { invoke_inst("h0330000f".U) } // fence rw, rw
+        when(cnt(31)) { wait_inst() }
+        recover_regs(32, 9)
+        when(cnt(41)) {
             cnt := 1.U 
             state := STATE_SEND_HEAD
-            pgbuf_pop_pos := 0.U 
-            pgbuf_push_pos := 0.U 
+            pgbuf_cpu_pos := 0.U 
+            pgbuf_uart_pos := 0.U
+            wt_byte_cnt := 0.U 
         }
     }
 
