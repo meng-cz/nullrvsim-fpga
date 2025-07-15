@@ -62,7 +62,7 @@ bool mpser(string devpath, vector<string> &argv) {
     {
         std::stringstream ss(ldpath);
         string item = "";
-        while (std::getline(ss, item, ';')) {
+        while (std::getline(ss, item, ':')) {
             if (!item.empty()) {
                 workload.ldpaths.push_back(item);
             }

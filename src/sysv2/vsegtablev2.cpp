@@ -135,6 +135,8 @@ void VirtMemSegTable::erase(VPageIndexT pgstart, uint64_t pgcnt, vector<VMSegInf
         }
 
     }
+
+    segs.swap(newsegs);
 }
 
 VMSegInfo * VirtMemSegTable::get(VPageIndexT vpn) {

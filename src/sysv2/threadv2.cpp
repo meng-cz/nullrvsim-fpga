@@ -203,27 +203,27 @@ void ThreadV2::elf_exec(SimWorkload &param, VirtAddrT *out_entry, VirtAddrT *out
     uint32_t seg_num = reader.segments.size();
     VirtAddrT elf_entry = reader.get_entry();
     VirtAddrT interp_entry = 0;
-    VirtAddrT phdr = reader.get_segments_offset();
-    VirtAddrT elf_load_addr = 0;
+    VirtAddrT phdr_offset = reader.get_segments_offset();
+    VirtAddrT elf_load_addr = (1UL << 63); // the vaddr where file offset 0 is loaded
+    uint64_t elf_load_addr_bias = 0; // the in-file-vaddr bias from file offset 
     VirtAddrT interp_load_addr = 0;
     const char *interp_str = nullptr;
 
     // 查找有没有interp和代码段，设置phdr的虚拟地址
-    VirtAddrT initbrk = elf_load_addr;
     bool has_text_seg = false;
     for (int i = 0; i < seg_num; ++i) {
         const ELFIO::segment *pseg = reader.segments[i];
         if(pseg->get_type() == PT_INTERP) {
             interp_str = pseg->get_data();
-        }
-        if(pseg->get_type() == PT_LOAD && (pseg->get_flags() & PF_X)) {
-            has_text_seg = true;
-        }
-        if(pseg->get_type() == PT_PHDR) {
-            phdr = pseg->get_virtual_address();
-        }
-        if(pseg->get_type() == PT_LOAD && pseg->get_offset() == 0) {
-            elf_load_addr += pseg->get_virtual_address();
+        } else if(pseg->get_type() == PT_LOAD) {
+            if(pseg->get_flags() & PF_X) {
+                has_text_seg = true;
+            }
+            if(pseg->get_offset() == 0) {
+                elf_load_addr_bias = pseg->get_virtual_address();
+            }
+        } else if(pseg->get_type() == PT_PHDR) {
+            phdr_offset = pseg->get_offset();
         }
     }
     if(!has_text_seg) {
@@ -233,12 +233,13 @@ void ThreadV2::elf_exec(SimWorkload &param, VirtAddrT *out_entry, VirtAddrT *out
 
     // 设置PIT ELF的默认加载位置
     if(reader.get_type() == ET_DYN) {
-        simroot_assertf(elf_load_addr == 0, "Dynamic ELF Should Start with 0 Address");
-        elf_load_addr = 0x10000000UL;
+        simroot_assertf(elf_load_addr_bias == 0, "Dynamic ELF Should Start with 0 Address");
+        elf_load_addr = 0x1000000UL;
         elf_entry += elf_load_addr;
         pgtable->init_brk(elf_load_addr);
+    } else {
+        elf_load_addr = elf_load_addr_bias;
     }
-    phdr += elf_load_addr;
 
     // 加载elf的PT_LOAD段
     for (int i = 0; i < seg_num; ++i) {
@@ -313,7 +314,7 @@ void ThreadV2::elf_exec(SimWorkload &param, VirtAddrT *out_entry, VirtAddrT *out
 
     // Init aux_vecs
     std::list<std::pair<uint64_t, uint64_t>> aux_vecs;
-    aux_vecs.emplace_back(std::make_pair(AT_PHDR, phdr));
+    aux_vecs.emplace_back(std::make_pair(AT_PHDR, phdr_offset + elf_load_addr));
     aux_vecs.emplace_back(std::make_pair(AT_PHENT, reader.get_segment_entry_size()));
     aux_vecs.emplace_back(std::make_pair(AT_PHNUM, reader.segments.size()));
     aux_vecs.emplace_back(std::make_pair(AT_PAGESZ, PAGE_LEN_BYTE));
