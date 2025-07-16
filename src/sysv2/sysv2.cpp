@@ -30,6 +30,7 @@ SMPSystemV2::SMPSystemV2(SimWorkload &workload, CPUGroupInterface *cpus, uint32_
     running_threads.assign(cpu_num, nullptr);
 
     has_hard_fp = conf::get_int("root", "hard_fp", 1);
+    log_pgfault = !conf::get_int("root", "hide_page_fault_log", 0);
 
     TgtMemSetList stlist;
 
@@ -2505,8 +2506,15 @@ VirtAddrT SMPSystemV2::_page_fault_rx(uint32_t cpu_id, VirtAddrT pc, VirtAddrT b
         // cpus->flush_tlb_vpgidx(cpu_id, vpn << PAGE_ADDR_OFFSET, CURT->asid);
         cpus->flush_tlb_all(cpu_id);
         
-        LOG_SYSCALL_2("page_fault_rx", "0x%lx", pc, "0x%lx", badaddr, "%d", 0);
+        if(log_pgfault) { LOG_SYSCALL_2("page_fault_rx", "0x%lx", pc, "0x%lx", badaddr, "%d", 0); }
         return pc;
+    } else if(pte & PTE_V) {
+        if(isx && (pte & PTE_X)) {
+            return pc;
+        }
+        if(!isx && (pte & PTE_R)) {
+            return pc;
+        }
     }
 
     printf("%ld: Segment Fault on CPU %d: %s 0x%lx @0x%lx\n", cpus->get_current_tick(), cpu_id, (isx?"Execute":"Read"), badaddr, pc);
@@ -2532,7 +2540,9 @@ VirtAddrT SMPSystemV2::_page_fault_w(uint32_t cpu_id, VirtAddrT pc, VirtAddrT ba
         // cpus->flush_tlb_vpgidx(cpu_id, vpn << PAGE_ADDR_OFFSET, CURT->asid);
         cpus->flush_tlb_all(cpu_id);
         
-        LOG_SYSCALL_2("page_fault_w", "0x%lx", pc, "0x%lx", badaddr, "%d", 0);
+        if(log_pgfault) { LOG_SYSCALL_2("page_fault_w", "0x%lx", pc, "0x%lx", badaddr, "%d", 0); }
+        return pc;
+    } else if(pte & (PTE_V | PTE_W)) {
         return pc;
     }
 

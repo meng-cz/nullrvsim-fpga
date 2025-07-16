@@ -309,6 +309,7 @@ protected:
 
 
     bool log_syscall = true;
+    bool log_pgfault = true;
 };
 
 #endif
