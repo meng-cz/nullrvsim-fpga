@@ -2510,9 +2510,11 @@ VirtAddrT SMPSystemV2::_page_fault_rx(uint32_t cpu_id, VirtAddrT pc, VirtAddrT b
         return pc;
     } else if(pte & PTE_V) {
         if(isx && (pte & PTE_X)) {
+            cpus->flush_tlb_all(cpu_id);
             return pc;
         }
         if(!isx && (pte & PTE_R)) {
+            cpus->flush_tlb_all(cpu_id);
             return pc;
         }
     }
@@ -2543,6 +2545,7 @@ VirtAddrT SMPSystemV2::_page_fault_w(uint32_t cpu_id, VirtAddrT pc, VirtAddrT ba
         if(log_pgfault) { LOG_SYSCALL_2("page_fault_w", "0x%lx", pc, "0x%lx", badaddr, "%d", 0); }
         return pc;
     } else if(pte & (PTE_V | PTE_W)) {
+        cpus->flush_tlb_all(cpu_id);
         return pc;
     }
 
