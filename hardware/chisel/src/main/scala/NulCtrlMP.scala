@@ -106,16 +106,17 @@ class NulCPUCtrlMP(cpunum: Int) extends Module {
     val STATE_MMU           = 10.U 
     val STATE_REDIR         = 11.U 
     val STATE_FLUSH         = 12.U 
-    val STATE_REGRD         = 13.U 
-    val STATE_REGWT         = 14.U 
-    val STATE_MEMRD         = 15.U 
-    val STATE_MEMWT         = 16.U 
-    val STATE_PGRD          = 17.U 
-    val STATE_PGST          = 18.U 
-    val STATE_PGWT          = 19.U 
-    val STATE_PGCP          = 20.U 
-    val STATE_SYNCI         = 21.U 
-    val STATE_INST          = 22.U 
+    val STATE_FLUSH2        = 13.U 
+    val STATE_REGRD         = 14.U 
+    val STATE_REGWT         = 15.U 
+    val STATE_MEMRD         = 16.U 
+    val STATE_MEMWT         = 17.U 
+    val STATE_PGRD          = 18.U 
+    val STATE_PGST          = 19.U 
+    val STATE_PGWT          = 20.U 
+    val STATE_PGCP          = 21.U 
+    val STATE_SYNCI         = 22.U 
+    val STATE_INST          = 23.U 
 
     val state = RegInit(0.U(5.W))
     val trans_bytes = RegInit(0.U(10.W))
@@ -184,7 +185,7 @@ class NulCPUCtrlMP(cpunum: Int) extends Module {
             is(SEROP_MMU) { state := STATE_MMU }
             is(SEROP_REDIR) { state := STATE_REDIR }
             is(SEROP_FTLB) { state := STATE_FLUSH }
-            is(SEROP_FTLB2) { state := STATE_FLUSH }
+            is(SEROP_FTLB2) { state := STATE_FLUSH2 }
             is(SEROP_SYNCI) { state := STATE_SYNCI }
             is(SEROP_REGRD) { state := STATE_REGRD }
             is(SEROP_REGWT) { state := STATE_REGWT }
@@ -407,6 +408,19 @@ class NulCPUCtrlMP(cpunum: Int) extends Module {
         when(cnt(0)) { invoke_inst("b00010010000000000000000001110011".U) } // sfence.vma x0, x0
         when(cnt(1)) { wait_inst() }
         when(cnt(2)) {
+            cnt := 1.U 
+            state := STATE_SEND_HEAD
+        }
+    }
+
+    val flush_tlb_address = Cat((0.U(12.W)), oparg(8), oparg(7), oparg(6), oparg(5), oparg(4), (0.U(12.W)))
+    when(state === STATE_FLUSH2) {
+        backup_regs(0, 1)
+        when(cnt(1)) { write_reg(1, flush_tlb_address) }
+        when(cnt(2)) { invoke_inst("b00010010000000000000000001110011".U | (5.U << 15)) } // sfence.vma x5, x0
+        when(cnt(3)) { wait_inst() }
+        recover_regs(4, 1)
+        when(cnt(5)) {
             cnt := 1.U 
             state := STATE_SEND_HEAD
         }
