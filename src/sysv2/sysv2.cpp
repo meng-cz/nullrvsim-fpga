@@ -28,6 +28,10 @@ SMPSystemV2::SMPSystemV2(SimWorkload &workload, CPUGroupInterface *cpus, uint32_
 : cpus(cpus), cpu_num(cpu_num), membase(membase), memsz(memsz) {
     
     running_threads.assign(cpu_num, nullptr);
+    last_running_tids.assign(cpu_num, 0);
+    last_running_mmu.assign(cpu_num, 0);
+
+    using_asid = conf::get_int("root", "using_asid", 0);
 
     has_hard_fp = conf::get_int("root", "hard_fp", 1);
     log_pgfault = !conf::get_int("root", "hide_page_fault_log", 0);
@@ -151,8 +155,14 @@ VirtAddrT SMPSystemV2::_pop_context_and_execute(uint32_t cpu_id) {
     ThreadV2 *thread = running_threads[cpu_id];
 
     // Set MMU
-    cpus->set_mmu(cpu_id, thread->pgtable->get_page_table_base(), 0);
-    cpus->flush_tlb_all(cpu_id);
+    AsidT asid = (using_asid?(thread->asid):0);
+    PhysAddrT ptbase = thread->pgtable->get_page_table_base();
+    if(((ptbase | asid) != last_running_mmu[cpu_id]) || (last_running_tids[cpu_id] != thread->tid)) {
+        cpus->set_mmu(cpu_id, ptbase, asid);
+        cpus->flush_tlb_all(cpu_id);
+        last_running_mmu[cpu_id] = (ptbase | asid);
+        last_running_tids[cpu_id] = thread->tid;
+    }
 
     // Flush memory operation during waiting
     for(auto &st : thread->stlist_on_ready) {
@@ -282,8 +292,8 @@ bool SMPSystemV2::_memcpy_to_target(uint32_t cpu_id, VirtAddrT tgt_dst, void * s
                 for(auto &cp : cplist) {
                     _perform_target_pagecpy(cpu_id, cp);
                 }
-                // cpus->flush_tlb_vpgidx(cpu_id, vpn << PAGE_ADDR_OFFSET, curt->asid);
-                cpus->flush_tlb_all(cpu_id);
+                cpus->flush_tlb_vpgidx(cpu_id, vpn << PAGE_ADDR_OFFSET, using_asid?(curt->asid):0);
+                // cpus->flush_tlb_all(cpu_id);
                 pte = curt->pgtable->pt_get(vpn, nullptr);
             }
             else if(!((pte & PTE_V) && (pte & PTE_W))) {
@@ -350,8 +360,8 @@ bool SMPSystemV2::_memcpy_from_target(uint32_t cpu_id, void * dst, VirtAddrT tgt
                 for(auto &cp : cplist) {
                     _perform_target_pagecpy(cpu_id, cp);
                 }
-                // cpus->flush_tlb_vpgidx(cpu_id, vpn << PAGE_ADDR_OFFSET, curt->asid);
-                cpus->flush_tlb_all(cpu_id);
+                cpus->flush_tlb_vpgidx(cpu_id, vpn << PAGE_ADDR_OFFSET, using_asid?(curt->asid):0);
+                // cpus->flush_tlb_all(cpu_id);
                 pte = curt->pgtable->pt_get(vpn, nullptr);
             }
             else if(!(pte & PTE_V)) {
@@ -409,8 +419,8 @@ bool SMPSystemV2::_strcpy_from_target(uint32_t cpu_id, char * dst, VirtAddrT tgt
                 for(auto &cp : cplist) {
                     _perform_target_pagecpy(cpu_id, cp);
                 }
-                // cpus->flush_tlb_vpgidx(cpu_id, vpn << PAGE_ADDR_OFFSET, curt->asid);
-                cpus->flush_tlb_all(cpu_id);
+                cpus->flush_tlb_vpgidx(cpu_id, vpn << PAGE_ADDR_OFFSET, using_asid?(curt->asid):0);
+                // cpus->flush_tlb_all(cpu_id);
                 pte = curt->pgtable->pt_get(vpn, nullptr);
             }
             else if(!(pte & PTE_V)) {
@@ -2090,7 +2100,7 @@ SYSCALL_DEFINE_V2(214, brk) {
     VirtAddrT ret = CURT->pgtable->alloc_brk(arg0, &stlist);
     if(!stlist.empty()) {
         for(auto &st : stlist) _perform_target_memset(cpu_id, st); 
-        cpus->flush_tlb_all(cpu_id);
+        // cpus->flush_tlb_all(cpu_id);
     }
     
     LOG_SYSCALL_1("brk", "0x%lx", arg0, "0x%lx", ret);
@@ -2503,18 +2513,18 @@ VirtAddrT SMPSystemV2::_page_fault_rx(uint32_t cpu_id, VirtAddrT pc, VirtAddrT b
         for(auto &cp : cplist) {
             _perform_target_pagecpy(cpu_id, cp);
         }
-        // cpus->flush_tlb_vpgidx(cpu_id, vpn << PAGE_ADDR_OFFSET, CURT->asid);
-        cpus->flush_tlb_all(cpu_id);
+        cpus->flush_tlb_vpgidx(cpu_id, vpn << PAGE_ADDR_OFFSET, using_asid?(CURT->asid):0);
+        // cpus->flush_tlb_all(cpu_id);
         
         if(log_pgfault) { LOG_SYSCALL_2("page_fault_rx", "0x%lx", pc, "0x%lx", badaddr, "%d", 0); }
         return pc;
     } else if(pte & PTE_V) {
         if(isx && (pte & PTE_X)) {
-            cpus->flush_tlb_all(cpu_id);
+            cpus->flush_tlb_vpgidx(cpu_id, vpn << PAGE_ADDR_OFFSET, using_asid?(CURT->asid):0);
             return pc;
         }
         if(!isx && (pte & PTE_R)) {
-            cpus->flush_tlb_all(cpu_id);
+            cpus->flush_tlb_vpgidx(cpu_id, vpn << PAGE_ADDR_OFFSET, using_asid?(CURT->asid):0);
             return pc;
         }
     }
@@ -2539,13 +2549,14 @@ VirtAddrT SMPSystemV2::_page_fault_w(uint32_t cpu_id, VirtAddrT pc, VirtAddrT ba
         for(auto &cp : cplist) {
             _perform_target_pagecpy(cpu_id, cp);
         }
-        // cpus->flush_tlb_vpgidx(cpu_id, vpn << PAGE_ADDR_OFFSET, CURT->asid);
-        cpus->flush_tlb_all(cpu_id);
+        cpus->flush_tlb_vpgidx(cpu_id, vpn << PAGE_ADDR_OFFSET, using_asid?(CURT->asid):0);
+        // cpus->flush_tlb_all(cpu_id);
         
         if(log_pgfault) { LOG_SYSCALL_2("page_fault_w", "0x%lx", pc, "0x%lx", badaddr, "%d", 0); }
         return pc;
     } else if(pte & (PTE_V | PTE_W)) {
-        cpus->flush_tlb_all(cpu_id);
+        cpus->flush_tlb_vpgidx(cpu_id, vpn << PAGE_ADDR_OFFSET, using_asid?(CURT->asid):0);
+        // cpus->flush_tlb_all(cpu_id);
         return pc;
     }
 

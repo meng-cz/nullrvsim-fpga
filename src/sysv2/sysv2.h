@@ -71,6 +71,7 @@ protected:
 
     uint64_t cur_tid_alloc = DEFAULT_PID;
     AsidT cur_asid_alloc = 1;
+    bool using_asid = false;
 
     DefaultLock sch_lock;
 
@@ -79,6 +80,8 @@ protected:
     unordered_map<TgtTGidT, vector<TgtTidT>> thread_groups;
 
     vector<ThreadV2*> running_threads;
+    vector<uint64_t> last_running_mmu;
+    vector<TgtTidT> last_running_tids;
     std::list<ThreadV2*> ready_threads;
     std::set<ThreadV2*> waiting_threads;
 

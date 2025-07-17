@@ -30,7 +30,7 @@ public:
     ~ThreadPageTableV2();
 
     PTET pt_get(VPageIndexT vpg, PhysAddrT *tgtaddr) { return pt->pt_get(vpg, tgtaddr); }
-    PageIndexT get_page_table_base() { return pt->get_page_table_base(); }
+    PhysAddrT get_page_table_base() { return pt->get_page_table_base(); }
 
     VirtAddrT alloc_mmap_fixed(VirtAddrT addr, uint64_t size, PageFlagT flag, FileDescriptor* fd, uint64_t offset, string info, TgtMemSetList *stlist);
     VirtAddrT alloc_mmap(uint64_t size, PageFlagT flag, FileDescriptor* fd, uint64_t offset, string info, TgtMemSetList *stlist);
