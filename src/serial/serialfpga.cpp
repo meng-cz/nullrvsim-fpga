@@ -49,6 +49,7 @@ int32_t get_baudrate_const(int baudrate) {
 SerialFPGAAdapter::SerialFPGAAdapter(string devfile, uint32_t baudrate) {
 
     dbg = conf::get_int("serial", "debug_enable", 0);
+    always_flush_all = conf::get_int("root", "flush_tlb_all", 0);
 
     fd = open(devfile.c_str(), O_RDWR | O_NOCTTY | O_SYNC);
     simroot_assertf(fd > 0, "Open Serial Device %s Failed", devfile.c_str());
@@ -219,6 +220,10 @@ void SerialFPGAAdapter::flush_tlb_all(uint32_t cpu_id) {
 }
 
 void SerialFPGAAdapter::flush_tlb_vpgidx(uint32_t cpu_id, VirtAddrT vaddr, AsidT asid) {
+    if(always_flush_all) {
+        flush_tlb_all(cpu_id);
+        return;
+    }
     vector<uint8_t> buf, ret;
     _append_int(buf, cpu_id, 2);
     _append_int(buf, asid, 2);

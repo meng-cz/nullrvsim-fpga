@@ -80,6 +80,8 @@ private:
 
     uint64_t _pop_int(BufT &buf, uint64_t bytes);
 
+    bool always_flush_all = false;
+
     int32_t dbg = 0;
     bool debug_op = false;
 };
