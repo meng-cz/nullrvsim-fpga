@@ -447,7 +447,7 @@ void AtomicSMPCores::_on_cur_simcore(uint32_t id) {
     else if(inst.opcode == RV64OPCode::madd || inst.opcode == RV64OPCode::msub || inst.opcode == RV64OPCode::nmsub || inst.opcode == RV64OPCode::nmadd) {
         RawDataT ret = 0;
         if(SimError::success != isa::perform_fmadd_op(inst.opcode, inst.param.fp.fwid, &ret, reg[rs1+32], reg[rs2+32], reg[rs3+32], &core.fcsr));
-        if(rd1) reg[rd1] = ret;
+        reg[rd1+32] = ret;
         LOG_INST("%s -> 0x%lx", inst.debug_name_str.c_str(), ret);
     }
     else if(inst.opcode == RV64OPCode::opfp) {

@@ -273,7 +273,7 @@ SimError _fp_mv_f2i(RV64FPWidth2 fwid, RV64FPMVI3 mv, IntDataT *out, FPDataT s) 
         switch (fwid)
         {
         case RV64FPWidth2::fdword: RAW_DATA_AS(ret).u64 = RAW_DATA_AS(s).u64; break;
-        case RV64FPWidth2::fword : RAW_DATA_AS(ret).u64 = RAW_DATA_AS(s).u32; break;
+        case RV64FPWidth2::fword : RAW_DATA_AS(ret).i64 = RAW_DATA_AS(s).i32; break;
         default: return SimError::unsupported;
         }
     }
