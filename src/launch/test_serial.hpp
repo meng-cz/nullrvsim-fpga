@@ -34,8 +34,22 @@ bool test_serial_1(string dev_path) {
     printf("Read Reg X5\n");
     assert(0x1122334455667788UL == dev->regacc_read(0, 5));
 
-    printf("Test 1 PASSED\n");
+    if(0 == conf::get_int("root", "hard_fp", 0)) {
+        printf("Skip FP\nTest 1 PASSED\n");
+        return true;
+    }
 
+    printf("Setup All Regs\n");
+    for(uint32_t i = 1; i < 64; i++) {
+        dev->regacc_write(0, i, i);
+    }
+    printf("Check\n");
+    for(uint32_t i = 1; i < 64; i++) {
+        uint64_t rd = dev->regacc_read(0, i);
+        simroot_assertf(rd == i, "Reg %d Check Failed: Required 0x%x, Read 0x%lx", i, i, rd);
+    }
+
+    printf("Test 1 PASSED\n");
     return true;
 }
 
