@@ -90,6 +90,8 @@ typedef struct {
     vector<uint64_t> uticks;
 
     vector<shared_ptr<std::ofstream>> ofiles;
+
+    bool debug_runtime = false;
 };
 
 }

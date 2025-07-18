@@ -39,6 +39,7 @@ AtomicSMPCores::AtomicSMPCores(uint32_t core_num, PhysAddrT mem_base, uint64_t m
     }
 
     is_sv48 = conf::get_int("root", "vm_is_sv48", 1);
+    debug_runtime = conf::get_int("root", "debug_runtime", 0);
 
     uticks.assign(core_num, 0);
 }
@@ -99,8 +100,11 @@ void AtomicSMPCores::dump_core(std::ofstream &ofile) {
     }
 }
 
+#define LOG_RUNTIME(fmt, ...) do { if(debug_runtime) printf("RT %ld: CPU %d: " fmt "\n", cur_tick, cpu_id, ##__VA_ARGS__); } while(0)
+
 void AtomicSMPCores::halt(uint32_t cpu_id) {
     cores[cpu_id].ishalted = true;
+    LOG_RUNTIME("Halt");
 }
 
 void AtomicSMPCores::interrupt(uint32_t cpu_id){
@@ -108,16 +112,19 @@ void AtomicSMPCores::interrupt(uint32_t cpu_id){
         cores[cpu_id].interrupt = true;
         cores[cpu_id].itr_cause = ITR_USR_EXTERNAL;
     }
+    LOG_RUNTIME("Interrupt");
 }
 
 void AtomicSMPCores::set_mmu(uint32_t cpu_id, PhysAddrT pgtable, AsidT asid){
     cores[cpu_id].pgtable = pgtable;
     cores[cpu_id].asid = asid;
+    LOG_RUNTIME("MMU(0x%lx, %d)", pgtable, asid);
 }
 
 void AtomicSMPCores::redirect(uint32_t cpu_id, VirtAddrT addr){
     cores[cpu_id].pc = addr;
     cores[cpu_id].ishalted = false;
+    LOG_RUNTIME("Redirect(0x%lx)", addr);
 }
 
 bool AtomicSMPCores::next(uint32_t *itr_cpu, VirtAddrT *itr_pc, uint32_t *itr_cause, RawDataT *itr_arg){
@@ -149,48 +156,54 @@ bool AtomicSMPCores::next(uint32_t *itr_cpu, VirtAddrT *itr_pc, uint32_t *itr_ca
 
 void AtomicSMPCores::flush_tlb_all(uint32_t cpu_id) {
     cores[cpu_id].tlb.clear();
+    LOG_RUNTIME("FlushALL");
 }
 void AtomicSMPCores::flush_tlb_asid(uint32_t cpu_id, AsidT asid) {
-    for(auto iter = cores[cpu_id].tlb.begin(); iter != cores[cpu_id].tlb.end(); ) {
-        if((iter->first & 0xffffUL) == asid) {
-            iter = cores[cpu_id].tlb.erase(iter);
-        }
-        else {
-            iter++;
-        }
-    }
+    flush_tlb_all(cpu_id);
 }
 void AtomicSMPCores::flush_tlb_vpgidx(uint32_t cpu_id, VirtAddrT vaddr, AsidT asid) {
     cores[cpu_id].tlb.erase(((vaddr & (~0xfffUL)) << 4) | (asid & 0xffffUL));
+    LOG_RUNTIME("Flush(0x%lx, %d)", vaddr, asid);
 }
 
 RawDataT AtomicSMPCores::regacc_read(uint32_t cpu_id, RVRegIndexT vreg) {
-    return (vreg?(cores[cpu_id].reg[vreg]):0);
+    RawDataT ret = (vreg?(cores[cpu_id].reg[vreg]):0);
+    LOG_RUNTIME("RegRead(%d) -> 0x%lx", vreg, ret);
+    return ret;
 }
 void AtomicSMPCores::regacc_write(uint32_t cpu_id, RVRegIndexT vreg, RawDataT data) {
     if(vreg) cores[cpu_id].reg[vreg] = data;
+    LOG_RUNTIME("RegWrite(%d, 0x%lx)", vreg, data);
 }
 
 RawDataT AtomicSMPCores::pxymem_read(uint32_t cpu_id, PhysAddrT paddr) {
-    return *((RawDataT*)(main_mem.data() + ((paddr - mem_base) & (~7UL))));
+    RawDataT ret = *((RawDataT*)(main_mem.data() + ((paddr - mem_base) & (~7UL))));
+    LOG_RUNTIME("MemRead(0x%lx) -> 0x%lx", paddr, ret);
+    return ret;
 }
 void AtomicSMPCores::pxymem_write(uint32_t cpu_id, PhysAddrT paddr, RawDataT data) {
     *((RawDataT*)(main_mem.data() + ((paddr - mem_base) & (~7UL)))) = data;
+    LOG_RUNTIME("MemWrite(0x%lx, 0x%lx)", paddr, data);
 }
 
 void AtomicSMPCores::pxymem_page_read(uint32_t cpu_id, PageIndexT ppn, void * buf) {
     memcpy(buf, main_mem.data() + ((ppn * PAGE_LEN_BYTE) - mem_base), PAGE_LEN_BYTE);
+    LOG_RUNTIME("PageRead(0x%lx)", ppn);
 }
+
 void AtomicSMPCores::pxymem_page_set(uint32_t cpu_id, PageIndexT ppn, RawDataT value) {
     vector<RawDataT> buf;
     buf.assign(PAGE_LEN_BYTE/8, value);
     memcpy(main_mem.data() + ((ppn * PAGE_LEN_BYTE) - mem_base), buf.data(), PAGE_LEN_BYTE);
+    LOG_RUNTIME("PageSet(0x%lx, 0x%lx)", ppn, value);
 }
 void AtomicSMPCores::pxymem_page_write(uint32_t cpu_id, PageIndexT ppn, void * buf) {
     memcpy(main_mem.data() + ((ppn * PAGE_LEN_BYTE) - mem_base), buf, PAGE_LEN_BYTE);
+    LOG_RUNTIME("PageWrite(0x%lx)", ppn);
 }
 void AtomicSMPCores::pxymem_page_copy(uint32_t cpu_id, PageIndexT dst, PageIndexT src) {
     memcpy(main_mem.data() + (dst * PAGE_LEN_BYTE - mem_base), main_mem.data() + (src * PAGE_LEN_BYTE - mem_base), PAGE_LEN_BYTE);
+    LOG_RUNTIME("PageCopy(0x%lx -> 0x%lx)", src, dst);
 }
 
 
