@@ -333,17 +333,21 @@ void AtomicSMPCores::_on_cur_simcore(uint32_t id) {
             RAISE_ITR(ITR_ST_PGFAULT, vaddr);
         }
         if(inst.param.amo.op == isa::RV64AMOOP5::SC) {
-            auto iter = srlc.find(paddr & (~0x3fUL));
-            if(iter == srlc.end() || iter->second != id) {
+            auto iter = lrsc.find(paddr & (~0x3fUL));
+            if(iter == lrsc.end() || iter->second.find(id) == iter->second.end()) {
                 ret = 1;
             } else {
                 memcpy(main_mem.data() + (paddr - mem_base), &data, len);
+                lrsc.erase(paddr & (~0x3fUL));
             }
-            srlc.erase(paddr & (~0x3fUL));
         }
         else if(inst.param.amo.op == isa::RV64AMOOP5::LR) {
             memcpy(&ret, main_mem.data() + (paddr - mem_base), len);
-            srlc[paddr & (~0x3fUL)] = id;
+            auto iter = lrsc.find(paddr & (~0x3fUL));
+            if(iter == lrsc.end()) {
+                iter = lrsc.emplace(paddr & (~0x3fUL), set<uint32_t>()).first;
+            }
+            iter->second.insert(id);
             if(len == 4) {
                 RAW_DATA_AS(ret).i64 = RAW_DATA_AS(ret).i32;
             }
@@ -361,7 +365,7 @@ void AtomicSMPCores::_on_cur_simcore(uint32_t id) {
             }
             memcpy(main_mem.data() + (paddr - mem_base), &stvalue, len);
             ret = previous;
-            srlc.erase(paddr & (~0x3fUL));
+            lrsc.erase(paddr & (~0x3fUL));
         }
         if(rd1) reg[rd1] = ret;
         LOG_INST("%s -> 0x%lx to @0x%lx (0x%lx)", inst.debug_name_str.c_str(), reg[rd1], vaddr, paddr);
@@ -405,6 +409,7 @@ void AtomicSMPCores::_on_cur_simcore(uint32_t id) {
             RAISE_ITR(ITR_ST_PGFAULT, vaddr);
         }
         memcpy(main_mem.data() + (paddr - mem_base), &buf, len);
+        lrsc.erase(paddr & (~0x3fUL));
         LOG_INST("%s -> 0x%lx to @0x%lx (0x%lx)", inst.debug_name_str.c_str(), buf, vaddr, paddr);
     }
     else if(inst.opcode == RV64OPCode::opimm) {

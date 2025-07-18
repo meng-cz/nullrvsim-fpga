@@ -84,7 +84,7 @@ typedef struct {
     PhysAddrT mem_base;
     vector<uint8_t> main_mem;
 
-    unordered_map<PhysAddrT, uint32_t> srlc;
+    unordered_map<PhysAddrT, set<uint32_t>> lrsc;
 
     uint64_t cur_tick = 0;
     vector<uint64_t> uticks;
