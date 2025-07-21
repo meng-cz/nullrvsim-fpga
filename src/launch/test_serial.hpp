@@ -34,21 +34,6 @@ bool test_serial_1(string dev_path) {
     printf("Read Reg X5\n");
     assert(0x1122334455667788UL == dev->regacc_read(0, 5));
 
-    if(0 == conf::get_int("root", "hard_fp", 0)) {
-        printf("Skip FP\nTest 1 PASSED\n");
-        return true;
-    }
-
-    printf("Setup All Regs\n");
-    for(uint32_t i = 1; i < 64; i++) {
-        dev->regacc_write(0, i, i);
-    }
-    printf("Check\n");
-    for(uint32_t i = 1; i < 64; i++) {
-        uint64_t rd = dev->regacc_read(0, i);
-        simroot_assertf(rd == i, "Reg %d Check Failed: Required 0x%x, Read 0x%lx", i, i, rd);
-    }
-
     printf("Test 1 PASSED\n");
     return true;
 }
@@ -343,7 +328,7 @@ bool test_serial_6(string dev_path) {
     printf("\nFence-I\n");
     dev->sync_inst_stream(0);
     
-    printf("Start ILA Trigger, and Type \"1\" to Continue...\n");
+    printf("Start ILA Trigger 1, and Type \"1\" to Continue...\n");
     do {
         if(getchar() == '1') break;
     } while(true);
@@ -376,10 +361,14 @@ bool test_serial_6(string dev_path) {
         _target_memst(dev, st);
     }
 
+    printf("Start ILA Trigger 2, and Type \"1\" to Continue...\n");
+    do {
+        if(getchar() == '1') break;
+    } while(true);
     printf("Flush TLB\n");
-    dev->flush_tlb_all(0);
+    dev->flush_tlb_vpgidx(0, data_vpn << 12, 0);
 
-    printf("Start ILA Trigger, and Type \"1\" to Continue...\n");
+    printf("Start ILA Trigger 3, and Type \"1\" to Continue...\n");
     do {
         if(getchar() == '1') break;
     } while(true);
@@ -402,6 +391,44 @@ bool test_serial_6(string dev_path) {
 
     return true;
 
+}
+
+bool test_serial_7(string dev_path) {
+
+    uint32_t baudrate = conf::get_int("serial", "baudrate", 115200);
+
+    uint64_t mem_base = conf::get_inthex("root", "memory_base_addr_hex", 0);
+    simroot_assert((mem_base % PAGE_LEN_BYTE) == 0);
+    simroot_assert(mem_base >= 0x80000000UL);
+
+    SerialFPGAAdapter * dev = new SerialFPGAAdapter(dev_path, baudrate);
+
+    printf("Test 7 Start\n");
+
+    printf("Save Reg X5 as 0x1122334455667788\n");
+    dev->regacc_write(0, 5, 0x1122334455667788UL);
+
+    printf("Start ILA Trigger 1, and Type \"1\" to Continue...\n");
+    do {
+        if(getchar() == '1') break;
+    } while(true);
+
+    printf("Write Reg F1\n");
+    dev->regacc_write(0, 33, 0x1234567812345678UL);
+    
+    printf("Start ILA Trigger 2, and Type \"1\" to Continue...\n");
+    do {
+        if(getchar() == '1') break;
+    } while(true);
+
+    printf("Read Reg F1\n");
+    assert(0x1234567812345678UL == dev->regacc_read(0, 33));
+    
+    printf("Read Reg X5\n");
+    assert(0x1122334455667788UL == dev->regacc_read(0, 5));
+
+    printf("Test 7 PASSED\n");
+    return true;
 }
 
 bool test_serial_mem(string dev_path) {

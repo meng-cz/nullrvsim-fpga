@@ -165,6 +165,11 @@ void execution() {
         TEST(test_serial_6(S[0]));
     });
 
+    OPERATION(op, "test7", {
+        ASSERT_MORE_ARGS(S, 1, "dev_path")
+        TEST(test_serial_7(S[0]));
+    });
+
     OPERATION(op, "test_mem", {
         ASSERT_MORE_ARGS(S, 1, "dev_path")
         TEST(test_serial_mem(S[0]));
