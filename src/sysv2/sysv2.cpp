@@ -2502,10 +2502,22 @@ VirtAddrT SMPSystemV2::_page_fault_rx(uint32_t cpu_id, VirtAddrT pc, VirtAddrT b
     VPageIndexT vpn = (badaddr >> PAGE_ADDR_OFFSET);
 
     PTET pte = CURT->pgtable->pt_get(vpn, nullptr);
+    TgtMemSetList stlist;
+    vector<TgtPgCpy> cplist;
 
-    if((pte & PTE_V) && (pte & PTE_COW) && (pte & PTE_NALLOC)) {
-        TgtMemSetList stlist;
-        vector<TgtPgCpy> cplist;
+    if(!(pte & PTE_V)) {
+        if(CURT->pgtable->apply_cow_nonalloc(vpn << PAGE_ADDR_OFFSET, &stlist, &cplist)) {
+            for(auto &st : stlist) {
+                _perform_target_memset(cpu_id, st);
+            }
+            for(auto &cp : cplist) {
+                _perform_target_pagecpy(cpu_id, cp);
+            }
+            if(log_pgfault) { LOG_SYSCALL_2("page_fault_rx_alloc", "0x%lx", pc, "0x%lx", badaddr, "%d", 0); }
+            return pc;
+        }
+    }
+    else if((pte & PTE_V) && (pte & PTE_COW) && (pte & PTE_NALLOC)) {
         CURT->pgtable->apply_cow(vpn << PAGE_ADDR_OFFSET, &stlist, &cplist);
         for(auto &st : stlist) {
             _perform_target_memset(cpu_id, st);
@@ -2538,10 +2550,22 @@ VirtAddrT SMPSystemV2::_page_fault_w(uint32_t cpu_id, VirtAddrT pc, VirtAddrT ba
     VPageIndexT vpn = (badaddr >> PAGE_ADDR_OFFSET);
 
     PTET pte = CURT->pgtable->pt_get(vpn, nullptr);
+    TgtMemSetList stlist;
+    vector<TgtPgCpy> cplist;
 
-    if((pte & PTE_V) && (pte & PTE_COW)) {
-        TgtMemSetList stlist;
-        vector<TgtPgCpy> cplist;
+    if(!(pte & PTE_V)) {
+        if(CURT->pgtable->apply_cow_nonalloc(vpn << PAGE_ADDR_OFFSET, &stlist, &cplist)) {
+            for(auto &st : stlist) {
+                _perform_target_memset(cpu_id, st);
+            }
+            for(auto &cp : cplist) {
+                _perform_target_pagecpy(cpu_id, cp);
+            }
+            if(log_pgfault) { LOG_SYSCALL_2("page_fault_w_alloc", "0x%lx", pc, "0x%lx", badaddr, "%d", 0); }
+            return pc;
+        }
+    }
+    else if((pte & PTE_V) && (pte & PTE_COW)) {
         CURT->pgtable->apply_cow(vpn << PAGE_ADDR_OFFSET, &stlist, &cplist);
         for(auto &st : stlist) {
             _perform_target_memset(cpu_id, st);

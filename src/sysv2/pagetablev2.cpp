@@ -103,16 +103,16 @@ VirtAddrT ThreadPageTableV2::alloc_mmap_fixed(VirtAddrT addr, uint64_t size, Pag
     }
     else if(fd) {
         // Private file mapping
-        for(VPageIndexT vpn = vpi; vpn < vpi2; vpn++) {
-            pt->pt_insert(vpn, PTE_COW | PTE_NALLOC | PTE_V, stlist);
-        }
+        // for(VPageIndexT vpn = vpi; vpn < vpi2; vpn++) {
+        //     pt->pt_insert(vpn, PTE_COW | PTE_NALLOC | PTE_V, stlist);
+        // }
         fd->ref_cnt++;
     } else {
         // ANON mapping
         simroot_assert(flag & PGFLAG_ANON);
-        for(VPageIndexT vpn = vpi; vpn < vpi2; vpn++) {
-            pt->pt_insert(vpn, PTE_COW | PTE_NALLOC | PTE_V, stlist);
-        }
+        // for(VPageIndexT vpn = vpi; vpn < vpi2; vpn++) {
+        //     pt->pt_insert(vpn, PTE_COW | PTE_NALLOC | PTE_V, stlist);
+        // }
     }
 
     return addr;
@@ -155,7 +155,10 @@ void ThreadPageTableV2::free_mmap(VirtAddrT addr, uint64_t size, TgtMemSetList *
         // free page table
         for(VPageIndexT vpn = s.vpindex; vpn < s.vpindex + s.vpcnt; vpn++) {
             PTET pte = pt_get(vpn, nullptr);
-            simroot_assert(pte & PTE_V);
+            // simroot_assert(pte & PTE_V);
+            if(!(pte & PTE_V)) {
+                continue;
+            }
             if(!(pte & PTE_NALLOC)) ppman->free(pte >> 10);
             pt->pt_erase(vpn, stlist);
         }
@@ -225,6 +228,28 @@ void ThreadPageTableV2::msync_writeback(VirtAddrT addr, uint64_t size, unordered
     }
 }
 
+bool ThreadPageTableV2::apply_cow_nonalloc(VirtAddrT addr, TgtMemSetList *stlist, vector<TgtPgCpy> *cplist) {
+    VPageIndexT vpn = (addr >> PAGE_ADDR_OFFSET);
+    PTET pte = pt_get(vpn, nullptr);
+
+    if((pte & PTE_V) && (pte & PTE_COW)) {
+        apply_cow(addr, stlist, cplist);
+        return true;
+    }
+    if(pte & PTE_V) {
+        return false;
+    }
+
+    VMSegInfo *vseg = mmap_table->get(vpn);
+    if(vseg) {
+        PTET tmppte = (PTE_V | PTE_COW | PTE_NALLOC);
+        pt->pt_insert(vpn, tmppte, stlist);
+        apply_cow(addr, stlist, cplist);
+        return true;
+    }
+
+    return false;
+}
 
 void ThreadPageTableV2::apply_cow(VirtAddrT addr, TgtMemSetList *stlist, vector<TgtPgCpy> *cplist) {
 
@@ -353,10 +378,13 @@ void ThreadPageTableV2::mprotect(VirtAddrT addr, uint64_t size, uint32_t prot_fl
 
         for(VPageIndexT vpn = s.vpindex; vpn < s.vpindex + s.vpcnt; vpn++) {
             PTET pte = pt->pt_get(vpn, nullptr);
-            simroot_assert(pte & PTE_V);
-            if(pte & PTE_NALLOC) {
+            if(!(pte & PTE_V) || (pte & PTE_NALLOC)) {
                 continue;
             }
+            // simroot_assert(pte & PTE_V);
+            // if(pte & PTE_NALLOC) {
+            //     continue;
+            // }
             if(pte & PTE_COW) {
                 pte &= (~rwxmask);
                 pte |= (pte_flgs & (~PTE_W));
