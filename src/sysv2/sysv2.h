@@ -260,6 +260,8 @@ protected:
 #define SYSCALL_DEFINE_V2(num, name) VirtAddrT SMPSystemV2::SYSCALL_FUNC_NAME_V2(num,name)(uint32_t cpu_id, VirtAddrT pc)
 
     SYSCALL_CLAIM_V2(17, getcwd);
+    SYSCALL_CLAIM_V2(25, fcntl);
+    SYSCALL_CLAIM_V2(29, ioctl);
     SYSCALL_CLAIM_V2(48, faccessat);
     SYSCALL_CLAIM_V2(56, openat);
     SYSCALL_CLAIM_V2(57, close);

@@ -3,6 +3,7 @@
 #include "configuration.h"
 
 #include "sysv2.h"
+#include "ioctls.h"
 
 #include <stdarg.h>
 #include <fcntl.h>
@@ -848,6 +849,8 @@ void SMPSystemV2::run_sim() {
             switch (ecallid)
             {
             SYSCALL_CASE_V2(17, getcwd);
+            SYSCALL_CASE_V2(25, fcntl);
+            SYSCALL_CASE_V2(29, ioctl);
             SYSCALL_CASE_V2(48, faccessat);
             SYSCALL_CASE_V2(56, openat);
             SYSCALL_CASE_V2(57, close);
@@ -1002,6 +1005,82 @@ SYSCALL_DEFINE_V2(17, getcwd) {
 
     LOG_SYSCALL_2("getcwd", "0x%lx", buf, "0x%lx", len, "%s", retp);
     ECALL_RET(buf, pc+4);
+}
+
+SYSCALL_DEFINE_V2(25, fcntl) {
+    int32_t usrfd = IREG_V(a0);
+    uint32_t cmd = IREG_V(a1);
+    uint64_t arg = IREG_V(a2);
+    int64_t ret = 0;
+
+    FileDescriptor * fd = CURT->fdtable_trans(usrfd);
+    if(!fd) {
+        LOG_SYSCALL_3("fcntl", "%d", usrfd, "0x%x", cmd, "0x%lx", arg, "0x%s", "EBADF");
+        ECALL_RET(-EBADF, pc+4);
+    }
+
+    switch (cmd)
+    {
+    case F_SETFD:
+        ret = fcntl(fd->host_fd, F_SETFD, arg);
+        break;
+    default:
+        simroot_assertf(0, "CPU %d raise an unknown FCNTL 0x%x", cpu_id, cmd);
+    }
+
+    if(ret < 0) {
+        ret = -errno;
+    }
+
+    LOG_SYSCALL_3("fcntl", "%d", usrfd, "0x%x", cmd, "0x%lx", arg, "%ld", ret);
+    ECALL_RET(ret, pc+4);
+}
+
+SYSCALL_DEFINE_V2(29, ioctl) {
+    int32_t usrfd = IREG_V(a0);
+    uint32_t cmd = IREG_V(a1);
+    VirtAddrT argp = IREG_V(a2);
+    int64_t ret = 0;
+
+    FileDescriptor * fd = CURT->fdtable_trans(usrfd);
+    if(!fd) {
+        LOG_SYSCALL_3("ioctl", "%d", usrfd, "0x%x", cmd, "0x%lx", argp, "0x%s", "EBADF");
+        ECALL_RET(-EBADF, pc+4);
+    }
+
+    auto info = get_ioctl_cmd_info(cmd);
+    uint32_t flag = info.first;
+    uint64_t size = info.second;
+
+    simroot_assertf(flag & IOC_V, "CPU %d raise an unknown IOCTL 0x%x", cpu_id, cmd);
+
+    if(flag & IOC_NOARG) {
+        ret = ioctl(fd->host_fd, cmd);
+    } else if(size) {
+        vector<uint64_t> buf;
+        buf.assign(ALIGN(size, 8), 0);
+
+        if((flag & IOC_W) && !_memcpy_from_target(cpu_id, buf.data(), argp, size)) {
+            LOG_SYSCALL_3("ioctl", "%d", usrfd, "0x%x", cmd, "0x%lx", argp, "0x%s", "EFAULT");
+            ECALL_RET(-EFAULT, pc+4);
+        }
+
+        ret = ioctl(fd->host_fd, cmd, buf.data());
+
+        if((ret >= 0) && (flag & IOC_R) && !_memcpy_to_target(cpu_id, argp, buf.data(), size)) {
+            LOG_SYSCALL_3("ioctl", "%d", usrfd, "0x%x", cmd, "0x%lx", argp, "0x%s", "EFAULT");
+            ECALL_RET(-EFAULT, pc+4);
+        }
+    } else {
+        ret = ioctl(fd->host_fd, cmd, argp);
+    }
+
+    if(ret < 0) {
+        ret = -errno;
+    }
+
+    LOG_SYSCALL_3("ioctl", "%d", usrfd, "0x%x", cmd, "0x%lx", argp, "%ld", ret);
+    ECALL_RET(ret, pc+4);
 }
 
 SYSCALL_DEFINE_V2(48, faccessat) {
