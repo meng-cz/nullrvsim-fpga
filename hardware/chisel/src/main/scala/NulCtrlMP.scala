@@ -183,7 +183,11 @@ class NulCPUCtrlMP(cpunum: Int) extends Module {
                 sel_cpu.ext_itr := true.B
             }
             is(SEROP_MMU) { state := STATE_MMU }
-            is(SEROP_REDIR) { state := STATE_REDIR }
+            is(SEROP_REDIR) { 
+                when(cpu_state(opidx) === CPU_HALT || cpu_state(opidx) === CPU_ITR) {
+                    state := STATE_REDIR
+                }
+            }
             is(SEROP_FTLB) { state := STATE_FLUSH }
             is(SEROP_FTLB2) { state := STATE_FLUSH2 }
             is(SEROP_SYNCI) { state := STATE_SYNCI }

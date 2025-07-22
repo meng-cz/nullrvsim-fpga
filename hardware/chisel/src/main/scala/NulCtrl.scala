@@ -161,7 +161,11 @@ class NulCPUCtrl() extends Module {
                 io.cpu.ext_itr := true.B
             }
             is(SEROP_MMU) { state := STATE_MMU }
-            is(SEROP_REDIR) { state := STATE_REDIR }
+            is(SEROP_REDIR) { 
+                when(cpu_state === CPU_HALT || cpu_state === CPU_ITR) {
+                    state := STATE_REDIR
+                }
+            }
             is(SEROP_FTLB) { state := STATE_FLUSH }
             is(SEROP_FTLB2) { state := STATE_FLUSH2 }
             is(SEROP_SYNCI) { state := STATE_SYNCI }
