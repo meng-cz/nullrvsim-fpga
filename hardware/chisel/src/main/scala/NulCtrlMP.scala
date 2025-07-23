@@ -418,13 +418,15 @@ class NulCPUCtrlMP(cpunum: Int) extends Module {
     }
 
     val flush_tlb_address = Cat((0.U(12.W)), oparg(8), oparg(7), oparg(6), oparg(5), oparg(4), (0.U(12.W)))
+    val flush_asid = Cat((0.U(48.U)), oparg(3), oparg(2))
     when(state === STATE_FLUSH2) {
-        backup_regs(0, 1)
-        when(cnt(1)) { write_reg(0, flush_tlb_address) }
-        when(cnt(2)) { invoke_inst("b00010010000000000000000001110011".U | (5.U << 15)) } // sfence.vma x5, x0
-        when(cnt(3)) { wait_inst() }
-        recover_regs(4, 1)
-        when(cnt(5)) {
+        backup_regs(0, 2)
+        when(cnt(2)) { write_reg(0, flush_tlb_address) }
+        when(cnt(3)) { write_reg(1, flush_asid) }
+        when(cnt(4)) { invoke_inst("b00010010000000000000000001110011".U | (5.U << 15) | (6.U << 20.U)) } // sfence.vma x5, x6
+        when(cnt(5)) { wait_inst() }
+        recover_regs(6, 2)
+        when(cnt(8)) {
             cnt := 1.U 
             state := STATE_SEND_HEAD
         }
