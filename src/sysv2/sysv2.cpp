@@ -970,16 +970,16 @@ SYSCALL_DEFINE_V2(17, getcwd) {
         ECALL_RET(-EINVAL, pc+4);
     }
 
-    char retbuf[PATH_MAX];
-    char* retp = getcwd(retbuf, PATH_MAX);
-    uint64_t retlen = std::min<uint64_t>(strlen(retbuf) + 1, len);
+    vector<uint64_t> hostbuf;
+    hostbuf.assign(CEIL_DIV(len, 8), 0);
+    int64_t ret = syscall(SYS_getcwd, hostbuf.data(), len);
 
-    if(!_memcpy_to_target(cpu_id, buf, retp, retlen)) {
+    if(ret > 0 && !_memcpy_to_target(cpu_id, buf, hostbuf.data(), ret)) {
         LOG_SYSCALL_2("getcwd", "0x%lx", buf, "0x%lx", len, "%s", "EFAULT");
         ECALL_RET(-EFAULT, pc+4);
     }
 
-    LOG_SYSCALL_2("getcwd", "0x%lx", buf, "0x%lx", len, "%s", retp);
+    LOG_SYSCALL_2("getcwd", "0x%lx", buf, "0x%lx", len, "%ld", ret);
     ECALL_RET(buf, pc+4);
 }
 
