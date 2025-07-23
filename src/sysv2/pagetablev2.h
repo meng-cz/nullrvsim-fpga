@@ -35,6 +35,7 @@ public:
     VirtAddrT alloc_mmap_fixed(VirtAddrT addr, uint64_t size, PageFlagT flag, FileDescriptor* fd, uint64_t offset, string info, TgtMemSetList *stlist);
     VirtAddrT alloc_mmap(uint64_t size, PageFlagT flag, FileDescriptor* fd, uint64_t offset, string info, TgtMemSetList *stlist);
     void free_mmap(VirtAddrT addr, uint64_t size, TgtMemSetList *stlist);
+    VirtAddrT alloc_mremap(VirtAddrT old_addr, uint64_t old_size, uint64_t new_size, uint64_t flags, TgtMemSetList *stlist);
     void msync_get_ppns(VirtAddrT addr, uint64_t size, vector<PageIndexT> *out);
     void msync_writeback(VirtAddrT addr, uint64_t size, unordered_map<PageIndexT, vector<RawDataT>> *pages);
 

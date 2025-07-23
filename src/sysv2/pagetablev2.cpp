@@ -165,6 +165,48 @@ void ThreadPageTableV2::free_mmap(VirtAddrT addr, uint64_t size, TgtMemSetList *
     }
 }
 
+VirtAddrT ThreadPageTableV2::alloc_mremap(VirtAddrT old_addr, uint64_t old_size, uint64_t new_size, uint64_t flags, TgtMemSetList *stlist) {
+    simroot_assert(!(old_addr % PAGE_LEN_BYTE));
+    simroot_assert(old_size);
+    simroot_assert(new_size);
+
+    VPageIndexT vpidx = (old_addr >> PAGE_ADDR_OFFSET);
+    uint64_t old_vpn = CEIL_DIV(old_size, PAGE_LEN_BYTE);
+    uint64_t new_vpn = CEIL_DIV(new_size, PAGE_LEN_BYTE);
+    if(new_vpn == old_vpn) {
+        return old_addr;
+    }
+
+    if(new_vpn < old_vpn) {
+        free_mmap((vpidx + new_vpn) << PAGE_ADDR_OFFSET, (old_vpn - new_vpn) << PAGE_ADDR_OFFSET, stlist);
+        return old_addr;
+    }
+
+    VMSegInfo *origin_seg = mmap_table->get(vpidx);
+    simroot_assertf(origin_seg, "MREMAP on an invalid address 0x%lx", old_addr);
+    simroot_assertf(vpidx >= origin_seg->vpindex && vpidx + old_vpn <= origin_seg->vpindex + origin_seg->vpcnt, "MREMAP on an invalid segment 0x%lx (0x%lx)", old_addr, old_size);
+    
+    VPageIndexT new_vpidx = mmap_table->find_pos(new_vpn);
+    VMSegInfo seg = *origin_seg;
+    seg.vpindex = new_vpidx;
+    seg.vpcnt = new_vpn;
+
+    vector<VMSegInfo> poped;
+    mmap_table->erase(vpidx, old_vpn, poped);
+    simroot_assert(poped.size() == 1);
+    mmap_table->insert(seg);
+
+    for(uint64_t i = 0; i < old_vpn; i++) {
+        PTET pte = pt->pt_get(vpidx + i, nullptr);
+        if(pte & PTE_V) {
+            pt->pt_insert(new_vpidx + i, pte, stlist);
+            pt->pt_erase(vpidx + i, stlist);
+        }
+    }
+
+    return (new_vpidx << PAGE_ADDR_OFFSET);
+}
+
 void ThreadPageTableV2::msync_get_ppns(VirtAddrT addr, uint64_t size, vector<PageIndexT> *out) {
 
     simroot_assert(!(addr % PAGE_LEN_BYTE));

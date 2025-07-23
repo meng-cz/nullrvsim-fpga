@@ -863,6 +863,7 @@ void SMPSystemV2::run_sim() {
             SYSCALL_CASE_V2(212, recvmsg);
             SYSCALL_CASE_V2(214, brk);
             SYSCALL_CASE_V2(215, munmap);
+            SYSCALL_CASE_V2(216, mremap);
             SYSCALL_CASE_V2(220, clone);
             SYSCALL_CASE_V2(222, mmap);
             SYSCALL_CASE_V2(226, mprotect);
@@ -2190,8 +2191,30 @@ SYSCALL_DEFINE_V2(215, munmap) {
         cpus->flush_tlb_all(cpu_id);
     }
 
-    LOG_SYSCALL_2("munmap", "0x%lx", IREG_V(a0), "0x%lx", IREG_V(a1), "%ld", 0UL);
+    LOG_SYSCALL_2("munmap", "0x%lx", vaddr, "0x%lx", length, "%ld", 0UL);
     ECALL_RET(0, pc+4);
+}
+
+SYSCALL_DEFINE_V2(216, mremap) {
+    VirtAddrT old_addr = IREG_V(a0);
+    uint64_t old_size = IREG_V(a1);
+    uint64_t new_size = IREG_V(a2);
+    uint64_t flags = IREG_V(a3);
+
+    if(new_size > old_size && (!(flags & MREMAP_MAYMOVE) || (flags & MREMAP_FIXED))) {
+        LOG_SYSCALL_4("mremap", "0x%lx", old_addr, "0x%lx", old_size, "0x%lx", new_size, "0x%lx", flags, "%s", "ENOMEM");
+        ECALL_RET(-ENOMEM, pc+4);
+    }
+
+    TgtMemSetList stlist;
+    VirtAddrT ret = CURT->pgtable->alloc_mremap(old_addr, old_size, new_size, flags, &stlist);
+    if(!stlist.empty()) {
+        for(auto &st : stlist) _perform_target_memset(cpu_id, st); 
+        cpus->flush_tlb_all(cpu_id);
+    }
+
+    LOG_SYSCALL_4("mremap", "0x%lx", old_addr, "0x%lx", old_size, "0x%lx", new_size, "0x%lx", flags, "%ld", 0UL);
+    ECALL_RET(ret, pc+4);
 }
 
 SYSCALL_DEFINE_V2(220, clone) {

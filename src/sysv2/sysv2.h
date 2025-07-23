@@ -300,6 +300,7 @@ protected:
     SYSCALL_CLAIM_V2(212, recvmsg);
     SYSCALL_CLAIM_V2(214, brk);
     SYSCALL_CLAIM_V2(215, munmap);
+    SYSCALL_CLAIM_V2(216, mremap);
     SYSCALL_CLAIM_V2(220, clone);
     SYSCALL_CLAIM_V2(222, mmap);
     SYSCALL_CLAIM_V2(226, mprotect);
