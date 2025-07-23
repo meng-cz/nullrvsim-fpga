@@ -2590,7 +2590,11 @@ VirtAddrT SMPSystemV2::_page_fault_rx(uint32_t cpu_id, VirtAddrT pc, VirtAddrT b
             for(auto &cp : cplist) {
                 _perform_target_pagecpy(cpu_id, cp);
             }
-            cpus->flush_tlb_vpgidx(cpu_id, vpn << PAGE_ADDR_OFFSET, using_asid?(CURT->asid):0);
+            if(isx) {
+                cpus->flush_tlb_all(cpu_id);
+            } else {
+                cpus->flush_tlb_vpgidx(cpu_id, vpn << PAGE_ADDR_OFFSET, using_asid?(CURT->asid):0);
+            }
             if(log_pgfault) { LOG_SYSCALL_2("page_fault_rx_alloc", "0x%lx", pc, "0x%lx", badaddr, "%d", 0); }
             return pc;
         }
@@ -2603,14 +2607,17 @@ VirtAddrT SMPSystemV2::_page_fault_rx(uint32_t cpu_id, VirtAddrT pc, VirtAddrT b
         for(auto &cp : cplist) {
             _perform_target_pagecpy(cpu_id, cp);
         }
-        cpus->flush_tlb_vpgidx(cpu_id, vpn << PAGE_ADDR_OFFSET, using_asid?(CURT->asid):0);
-        // cpus->flush_tlb_all(cpu_id);
+        if(isx) {
+            cpus->flush_tlb_all(cpu_id);
+        } else {
+            cpus->flush_tlb_vpgidx(cpu_id, vpn << PAGE_ADDR_OFFSET, using_asid?(CURT->asid):0);
+        }
         
         if(log_pgfault) { LOG_SYSCALL_2("page_fault_rx", "0x%lx", pc, "0x%lx", badaddr, "%d", 0); }
         return pc;
     } else if(pte & PTE_V) {
         if(isx && (pte & PTE_X)) {
-            cpus->flush_tlb_vpgidx(cpu_id, vpn << PAGE_ADDR_OFFSET, using_asid?(CURT->asid):0);
+            cpus->flush_tlb_all(cpu_id);
             return pc;
         }
         if(!isx && (pte & PTE_R)) {
