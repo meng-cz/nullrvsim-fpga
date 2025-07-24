@@ -175,6 +175,11 @@ void execution() {
         TEST(test_serial_mem(S[0]));
     });
 
+    OPERATION(op, "test_4c1", {
+        ASSERT_MORE_ARGS(S, 1, "dev_path")
+        TEST(test_serial_4c1(S[0]));
+    });
+
 
     OPERATION(op, "test_pgtable", {
         TEST(test_pgtable());
