@@ -84,6 +84,11 @@ VirtAddrT ThreadPageTableV2::alloc_mmap_fixed(VirtAddrT addr, uint64_t size, Pag
         for(VPageIndexT vpn = vpi; vpn < vpi2; vpn++) {
             PageIndexT ppn = ppman->alloc();
             pt->pt_insert(vpn, (ppn << 10) + pte_flgs, stlist);
+            stlist->emplace_back(TgtMemSet64{
+                .base = (ppn * PAGE_LEN_BYTE),
+                .dwords = PAGE_LEN_BYTE/8,
+                .value = 0
+            });
         }
     }
     else if(fd && (flag & PGFLAG_SHARE)) {
