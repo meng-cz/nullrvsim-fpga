@@ -2326,7 +2326,7 @@ SYSCALL_DEFINE_V2(220, clone) {
         cpus->flush_tlb_all(cpu_id);
     }
 
-    insert_ready_thread_and_execute(newthread, cpu_id);
+    insert_ready_thread_and_execute(newthread, newthread->tid % cpu_num);
 
     sch_lock.unlock();
 
@@ -2595,7 +2595,7 @@ SYSCALL_DEFINE_V2(435, clone3) {
         cpus->flush_tlb_all(cpu_id);
     }
 
-    insert_ready_thread_and_execute(newthread, cpu_id);
+    insert_ready_thread_and_execute(newthread, newthread->tid % cpu_num);
 
     sch_lock.unlock();
 

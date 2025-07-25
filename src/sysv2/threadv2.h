@@ -18,7 +18,7 @@ using isa::RVRegArray;
 typedef uint64_t TgtSigsetT;
 
 #ifndef DEFAULT_PID
-#define DEFAULT_PID (10000)
+#define DEFAULT_PID (1024)
 #endif
 
 enum class ThreadState {
