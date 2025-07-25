@@ -37,6 +37,7 @@ int32_t get_baudrate_const(int baudrate) {
         case 921600: return B921600;
         case 1000000: return B1000000;
         case 1152000: return B1152000;
+        case 1500000: return B1500000;
         case 2000000: return B2000000;
         case 2500000: return B2500000;
         case 3000000: return B3000000;
