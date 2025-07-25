@@ -1760,10 +1760,6 @@ SYSCALL_DEFINE_V2(98, futex) {
     VirtAddrT uaddr = IREG_V(a0);
     int32_t futex_op = IREG_V(a1);
     uint32_t val = IREG_V(a2);
-    VirtAddrT timeout = IREG_V(a3);
-    uint32_t val2 = IREG_V(a3);
-    VirtAddrT uaddr2 = IREG_V(a4);
-    uint32_t val3 = IREG_V(a5);
 
     futex_op &= 127;
 
@@ -1771,26 +1767,23 @@ SYSCALL_DEFINE_V2(98, futex) {
     {
         PTET pte = CURT->pgtable->pt_get(uaddr >> PAGE_ADDR_OFFSET, nullptr);
         if(!(pte & PTE_V)) {
-            LOG_SYSCALL_6("futex", "0x%lx", uaddr, "%d", futex_op, "0x%x", val, "0x%lx", uaddr2, "0x%x", val2, "0x%x", val3, "%s", "EFAULT");
+            LOG_SYSCALL_3("futex", "0x%lx", uaddr, "%d", futex_op, "0x%x", val, "%s", "EFAULT");
             ECALL_RET(-EFAULT, pc+4);
         }
         paddr = ((pte >> 10) << PAGE_ADDR_OFFSET) | (uaddr & (PAGE_LEN_BYTE - 1));
     }
-    if(uaddr2) {
-        PTET pte = CURT->pgtable->pt_get(uaddr2 >> PAGE_ADDR_OFFSET, nullptr);
-        if(pte & PTE_V) {
-            paddr2 = ((pte >> 10) << PAGE_ADDR_OFFSET) | (uaddr2 & (PAGE_LEN_BYTE - 1));
-        }
-    }
 
     if(futex_op == FUTEX_WAIT || futex_op == FUTEX_WAIT_BITSET) {
+        VirtAddrT timeout = IREG_V(a3);
+        uint32_t val2 = IREG_V(a3);
+        uint32_t val3 = IREG_V(a5);
         RawDataT _v = cpus->pxymem_read(cpu_id, paddr & (~7UL));
         uint32_t v = ((paddr & 4) ? (_v >> 32) : _v);
         if(v != val) {
-            LOG_SYSCALL_6("futex", "0x%lx", uaddr, "%d", futex_op, "0x%x", val, "0x%lx", uaddr2, "0x%x", val2, "0x%x", val3, "%s", "EAGAIN");
+            LOG_SYSCALL_6("futex", "0x%lx", uaddr, "%d", futex_op, "0x%x", val, "0x%x", 0, "0x%x", val2, "0x%x", val3, "%s", "EAGAIN");
             ECALL_RET(-EAGAIN, pc+4);
         }
-        LOG_SYSCALL_6("futex", "0x%lx", uaddr, "%d", futex_op, "0x%x", val, "0x%lx", uaddr2, "0x%x", val2, "0x%x", val3, "%s", "WAIT");
+        LOG_SYSCALL_6("futex", "0x%lx", uaddr, "%d", futex_op, "0x%x", val, "0x%x", 0, "0x%x", val2, "0x%x", val3, "%s", "WAIT");
         _push_context_stack(cpu_id, pc+4);
         sch_lock.lock();
         futex_wait_thread_insert(paddr, CURT, (futex_op == FUTEX_WAIT_BITSET)?(val3):0, cpu_id);
@@ -1800,7 +1793,7 @@ SYSCALL_DEFINE_V2(98, futex) {
     }
     else if(futex_op == FUTEX_WAKE || futex_op == FUTEX_WAKE_BITSET) {
         FutexWaitThread buf;
-        uint32_t futex_mask = ((futex_op == FUTEX_WAKE_BITSET)?(val3):0);
+        uint32_t futex_mask = ((futex_op == FUTEX_WAKE_BITSET)?(IREG_V(a5)):0);
         uint64_t wake_cnt = 0;
         sch_lock.lock();
         for(wake_cnt = 0; wake_cnt < val; wake_cnt++) {
@@ -1810,7 +1803,7 @@ SYSCALL_DEFINE_V2(98, futex) {
             insert_ready_thread_and_execute(buf.thread, buf.last_cpu_id);
         }
         sch_lock.unlock();
-        LOG_SYSCALL_6("futex", "0x%lx", uaddr, "%d", futex_op, "0x%x", val, "0x%lx", uaddr2, "0x%x", val2, "0x%x", val3, "%ld", wake_cnt);
+        LOG_SYSCALL_4("futex_wake", "0x%lx", uaddr, "%d", futex_op, "0x%x", val, "0x%x", futex_mask, "%ld", wake_cnt);
         ECALL_RET(wake_cnt, pc+4);
     }
 
