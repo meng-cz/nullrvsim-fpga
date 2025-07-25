@@ -128,7 +128,7 @@ class NulCPUCtrlMP(cpunum: Int) extends Module {
     val opoff = RegInit(0.U(3.W))
     val oparg = RegInit(VecInit(Seq.fill(16)(0.U(8.W))))
     val retarg = RegInit(VecInit(Seq.fill(16)(0.U(8.W))))
-    val opidx = Cat(oparg(1), oparg(0))(cpunum_bitwid-1, 0)
+    val opidx = oparg(1)(cpunum_bitwid-1, 0)
     val sel_cpu = io.cpu(opidx)
 
     val all_inited = io.cpu.map(_.inited).reduce(_&&_)
@@ -162,16 +162,16 @@ class NulCPUCtrlMP(cpunum: Int) extends Module {
         }.elsewhen(rxop === SEROP_MEMWT) {
             trans_bytes := 16.U 
         }.otherwise {
-            trans_bytes := 0.U 
+            trans_bytes := 1.U 
         }
 
-        trans_pos := 0.U
+        trans_pos := 1.U
         state := STATE_RECV_ARG
     }
 
     when(state === STATE_RECV_ARG && trans_bytes === trans_pos) {
-        trans_bytes := 0.U
-        trans_pos := 0.U
+        trans_bytes := 1.U
+        trans_pos := 1.U
         state := STATE_SEND_HEAD
         switch(opcode) {
             is(SEROP_NEXT) { state := STATE_WAIT_NEXT }
@@ -222,7 +222,7 @@ class NulCPUCtrlMP(cpunum: Int) extends Module {
         trans_pos := 0.U
         when(io.tx.ready) {
             when(opcode === SEROP_NEXT) {
-                trans_bytes := 15.U
+                trans_bytes := Mux(retarg(1) === 8.U, 8.U, 14.U)
                 state := STATE_SEND_ARG
             }.elsewhen(opcode === SEROP_REGRD || opcode === SEROP_MEMRD || opcode === SEROP_CLK || opcode === SEROP_UCLK) {
                 trans_bytes := 8.U
@@ -252,15 +252,12 @@ class NulCPUCtrlMP(cpunum: Int) extends Module {
 
     event_queue.io.deq.ready := (state === STATE_WAIT_NEXT)
     when(state === STATE_WAIT_NEXT && event_queue.io.deq.valid) {
-        val pending_next_idx = event_queue.io.deq.bits.pad(16)
-        oparg(0) := pending_next_idx(7,0) // to update sel_cpu port
-        oparg(1) := pending_next_idx(15,8)
-        retarg(0) := pending_next_idx(7,0)
-        retarg(1) := pending_next_idx(15,8)
+        val pending_next_idx = event_queue.io.deq.bits.pad(8)
+        oparg(1) := pending_next_idx // to update sel_cpu port
+        retarg(0) := pending_next_idx
         state := STATE_NEXT
     }.elsewhen(state === STATE_WAIT_NEXT && all_halted) {
         retarg(0) := "hff".U
-        retarg(1) := "hff".U
         state := STATE_SEND_HEAD
     }
 
@@ -495,9 +492,9 @@ class NulCPUCtrlMP(cpunum: Int) extends Module {
         when(cnt(4)) { invoke_inst("h34102373".U) } // csrrs x6, mepc, x0
         when(cnt(5)) { invoke_inst("h343023f3".U) } // csrrs x7, mtval, x0
         when(cnt(6)) { wait_inst() }
-        when(cnt(7)) { read_reg_to_retarg(0, 2, 1) }
-        when(cnt(8)) { read_reg_to_retarg(1, 3, 6) }
-        when(cnt(9)) { read_reg_to_retarg(2, 9, 6) }
+        when(cnt(7)) { read_reg_to_retarg(0, 1, 1) }
+        when(cnt(8)) { read_reg_to_retarg(1, 2, 6) }
+        when(cnt(9)) { read_reg_to_retarg(2, 8, 6) }
         recover_regs(10, 3)
         when(cnt(13)) {
             cnt := 1.U 

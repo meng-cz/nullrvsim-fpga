@@ -130,7 +130,7 @@ uint64_t SerialFPGAAdapter::_pop_int(BufT &buf, uint64_t bytes) {
 }
 
 const uint64_t SEROP_RET_BITS[SEROP_NUM] = {
-    16+8+48+48,
+    8+8+48,
     0,
     0,
     0,
@@ -166,7 +166,7 @@ int8_t SerialFPGAAdapter::_perform_op(int8_t op, BufT &data, BufT &retdata) {
 
 void SerialFPGAAdapter::halt(uint32_t cpu_id) {
     vector<uint8_t> buf, ret;
-    _append_int(buf, cpu_id, 2);
+    _append_int(buf, cpu_id, 1);
     int8_t value = _perform_op(SEROP_HALT, buf, ret);
     simroot_assertf(SEROP_HALT == value, "Operation Halt on Core %d Failed: %d", cpu_id, value);
     DEBUGOP("Halt");
@@ -174,7 +174,7 @@ void SerialFPGAAdapter::halt(uint32_t cpu_id) {
 
 void SerialFPGAAdapter::interrupt(uint32_t cpu_id) {
     vector<uint8_t> buf, ret;
-    _append_int(buf, cpu_id, 2);
+    _append_int(buf, cpu_id, 1);
     int8_t value = _perform_op(SEROP_ITR, buf, ret);
     simroot_assertf(SEROP_ITR == value, "Operation Interrupt on Core %d Failed: %d", cpu_id, value);
     DEBUGOP("Interrupt");
@@ -182,7 +182,7 @@ void SerialFPGAAdapter::interrupt(uint32_t cpu_id) {
 
 void SerialFPGAAdapter::set_mmu(uint32_t cpu_id, PhysAddrT pgtable, AsidT asid) {
     vector<uint8_t> buf, ret;
-    _append_int(buf, cpu_id, 2);
+    _append_int(buf, cpu_id, 1);
     _append_int(buf, asid, 2);
     _append_int(buf, pgtable >> PAGE_ADDR_OFFSET, 5);
     int8_t value = _perform_op(SEROP_MMU, buf, ret);
@@ -192,7 +192,7 @@ void SerialFPGAAdapter::set_mmu(uint32_t cpu_id, PhysAddrT pgtable, AsidT asid) 
 
 void SerialFPGAAdapter::redirect(uint32_t cpu_id, VirtAddrT addr) {
     vector<uint8_t> buf, ret;
-    _append_int(buf, cpu_id, 2);
+    _append_int(buf, cpu_id, 1);
     _append_int(buf, addr, 6);
     int8_t value = _perform_op(SEROP_REDIR, buf, ret);
     simroot_assertf(SEROP_REDIR == value, "Operation Redirect on Core %d (0x%lx) Failed: %d", cpu_id, addr, value);
@@ -203,18 +203,21 @@ bool SerialFPGAAdapter::next(uint32_t *itr_cpu, VirtAddrT *itr_pc, uint32_t *itr
     vector<uint8_t> buf, ret;
     int8_t value = _perform_op(SEROP_NEXT, buf, ret);
     simroot_assertf(SEROP_NEXT == value, "Operation Next Failed: %d", value);
-    *itr_cpu = _pop_int(ret, 2);
+    *itr_cpu = _pop_int(ret, 1);
     *itr_cause = _pop_int(ret, 1);
     *itr_pc = _pop_int(ret, 6);
-    *itr_arg = _pop_int(ret, 6);
+    *itr_arg = 0;
+    if(*itr_cause != ITR_USR_ECALL) {
+        _read_serial(itr_arg, 6);
+    }
     uint32_t cpu_id = *itr_cpu;
     DEBUGOP("Next -> (0x%lx, %d, 0x%lx)", *itr_pc, *itr_cause, *itr_arg);
-    return (*itr_cpu != 0xffff);
+    return (*itr_cpu != 0xff);
 }
 
 void SerialFPGAAdapter::flush_tlb_all(uint32_t cpu_id) {
     vector<uint8_t> buf, ret;
-    _append_int(buf, cpu_id, 2);
+    _append_int(buf, cpu_id, 1);
     int8_t value = _perform_op(SEROP_FTLB, buf, ret);
     simroot_assertf(SEROP_FTLB == value, "Operation FlushTLB on Core %d Failed: %d", cpu_id, value);
     DEBUGOP("FlushTLB");
@@ -226,7 +229,7 @@ void SerialFPGAAdapter::flush_tlb_vpgidx(uint32_t cpu_id, VirtAddrT vaddr, AsidT
         return;
     }
     vector<uint8_t> buf, ret;
-    _append_int(buf, cpu_id, 2);
+    _append_int(buf, cpu_id, 1);
     _append_int(buf, asid, 2);
     _append_int(buf, vaddr >> PAGE_ADDR_OFFSET, 5);
     int8_t value = _perform_op(SEROP_FTLB2, buf, ret);
@@ -237,7 +240,7 @@ void SerialFPGAAdapter::flush_tlb_vpgidx(uint32_t cpu_id, VirtAddrT vaddr, AsidT
 
 void SerialFPGAAdapter::sync_inst_stream(uint32_t cpu_id) {
     vector<uint8_t> buf, ret;
-    _append_int(buf, cpu_id, 2);
+    _append_int(buf, cpu_id, 1);
     int8_t value = _perform_op(SEROP_SYNCI, buf, ret);
     simroot_assertf(SEROP_SYNCI == value, "Operation SyncI on Core %d Failed: %d", cpu_id, value);
     DEBUGOP("SyncI");
@@ -245,7 +248,7 @@ void SerialFPGAAdapter::sync_inst_stream(uint32_t cpu_id) {
 
 RawDataT SerialFPGAAdapter::regacc_read(uint32_t cpu_id, RVRegIndexT vreg) {
     vector<uint8_t> buf, ret;
-    _append_int(buf, cpu_id, 2);
+    _append_int(buf, cpu_id, 1);
     _append_int(buf, vreg, 2);
     int8_t value = _perform_op(SEROP_REGRD, buf, ret);
     simroot_assertf(SEROP_REGRD == value, "Operation RegRead on Core %d (%d) Failed: %d", cpu_id, vreg, value);
@@ -256,7 +259,7 @@ RawDataT SerialFPGAAdapter::regacc_read(uint32_t cpu_id, RVRegIndexT vreg) {
 
 void SerialFPGAAdapter::regacc_write(uint32_t cpu_id, RVRegIndexT vreg, RawDataT data) {
     vector<uint8_t> buf, ret;
-    _append_int(buf, cpu_id, 2);
+    _append_int(buf, cpu_id, 1);
     _append_int(buf, vreg, 2);
     _append_int(buf, data, 8);
     int8_t value = _perform_op(SEROP_REGWT, buf, ret);
@@ -266,7 +269,7 @@ void SerialFPGAAdapter::regacc_write(uint32_t cpu_id, RVRegIndexT vreg, RawDataT
 
 RawDataT SerialFPGAAdapter::pxymem_read(uint32_t cpu_id, PhysAddrT paddr) {
     vector<uint8_t> buf, ret;
-    _append_int(buf, cpu_id, 2);
+    _append_int(buf, cpu_id, 1);
     _append_int(buf, paddr, 6);
     int8_t value = _perform_op(SEROP_MEMRD, buf, ret);
     simroot_assertf(SEROP_MEMRD == value, "Operation MemRead on Core %d (0x%lx) Failed: %d", cpu_id, paddr, value);
@@ -277,7 +280,7 @@ RawDataT SerialFPGAAdapter::pxymem_read(uint32_t cpu_id, PhysAddrT paddr) {
 
 void SerialFPGAAdapter::pxymem_write(uint32_t cpu_id, PhysAddrT paddr, RawDataT data) {
     vector<uint8_t> buf, ret;
-    _append_int(buf, cpu_id, 2);
+    _append_int(buf, cpu_id, 1);
     _append_int(buf, paddr, 6);
     _append_int(buf, data, 8);
     int8_t value = _perform_op(SEROP_MEMWT, buf, ret);
@@ -288,7 +291,7 @@ void SerialFPGAAdapter::pxymem_write(uint32_t cpu_id, PhysAddrT paddr, RawDataT 
 void SerialFPGAAdapter::pxymem_page_read(uint32_t cpu_id, PageIndexT ppn, void * dbuf) {
     for(int32_t i = 0; i < 8; i++) {
         vector<uint8_t> buf, ret;
-        _append_int(buf, cpu_id, 2);
+        _append_int(buf, cpu_id, 1);
         _append_int(buf, ppn, 5);
         int8_t op = (SEROP_PGRD | (i << 5));
         int8_t value = _perform_op(op, buf, ret);
@@ -301,7 +304,7 @@ void SerialFPGAAdapter::pxymem_page_read(uint32_t cpu_id, PageIndexT ppn, void *
 
 void SerialFPGAAdapter::pxymem_page_set(uint32_t cpu_id, PageIndexT ppn, RawDataT value) {
     vector<uint8_t> buf, ret;
-    _append_int(buf, cpu_id, 2);
+    _append_int(buf, cpu_id, 1);
     _append_int(buf, ppn, 5);
     _append_int(buf, value, 8);
     int8_t rvalue = _perform_op(SEROP_PGST, buf, ret);
@@ -312,7 +315,7 @@ void SerialFPGAAdapter::pxymem_page_set(uint32_t cpu_id, PageIndexT ppn, RawData
 void SerialFPGAAdapter::pxymem_page_write(uint32_t cpu_id, PageIndexT ppn, void * dbuf) {
     for(int32_t i = 0; i < 8; i++) {
         vector<uint8_t> buf, ret;
-        _append_int(buf, cpu_id, 2);
+        _append_int(buf, cpu_id, 1);
         _append_int(buf, ppn, 5);
         _append_buf(buf, (uint8_t*)dbuf + (i*PAGE_LEN_BYTE/8), PAGE_LEN_BYTE/8);
         int8_t op = (SEROP_PGWT | (i << 5));
@@ -324,7 +327,7 @@ void SerialFPGAAdapter::pxymem_page_write(uint32_t cpu_id, PageIndexT ppn, void 
 
 void SerialFPGAAdapter::pxymem_page_copy(uint32_t cpu_id, PageIndexT dst, PageIndexT src) {
     vector<uint8_t> buf, ret;
-    _append_int(buf, cpu_id, 2);
+    _append_int(buf, cpu_id, 1);
     _append_int(buf, dst, 5);
     _append_int(buf, src, 5);
     int8_t value = _perform_op(SEROP_PGCP, buf, ret);
@@ -344,7 +347,7 @@ uint64_t SerialFPGAAdapter::get_current_tick() {
 
 uint64_t SerialFPGAAdapter::get_current_utick(uint32_t cpu_id) {
     vector<uint8_t> buf, ret;
-    _append_int(buf, cpu_id, 2);
+    _append_int(buf, cpu_id, 1);
     int8_t value = _perform_op(SEROP_UCLK, buf, ret);
     simroot_assertf(SEROP_UCLK == value, "Operation UClock on Core %d Failed: %d", cpu_id, value);
     uint64_t rvalue = _pop_int(ret, 8);
@@ -358,7 +361,7 @@ void SerialFPGAAdapter::pxymem_page_zero(uint32_t cpu_id, vector<PageIndexT> &pp
         uint64_t do_cnt = std::min<uint64_t>(64, ppns.size() - cnt);
 
         vector<uint8_t> buf, ret;
-        _append_int(buf, cpu_id, 2);
+        _append_int(buf, cpu_id, 1);
         _append_int(buf, do_cnt, 1);
         for(uint64_t i = 0; i < do_cnt; i++) {
             _append_int(buf, ppns[cnt + i], 5);
