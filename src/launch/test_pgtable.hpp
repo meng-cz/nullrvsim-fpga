@@ -55,7 +55,7 @@ bool test_pgtable() {
         sample_page.push_back(i);
     }
     
-
+    vector<VPageIndexT> needflush;
 
     TgtMemSetList stlist1;
 
@@ -99,9 +99,9 @@ bool test_pgtable() {
 
     TgtMemSetList stlist3;
     vector<TgtPgCpy> cplist3;
-    pgtable->apply_cow(rwpriv, &stlist3, &cplist3);
-    pgtable->apply_cow(rwshm, &stlist3, &cplist3);
-    pgtable->apply_cow(rfile, &stlist3, &cplist3);
+    pgtable->apply_cow(rwpriv, &stlist3, &cplist3, &needflush);
+    pgtable->apply_cow(rwshm, &stlist3, &cplist3, &needflush);
+    pgtable->apply_cow(rfile, &stlist3, &cplist3, &needflush);
 
     printf("Apply COWs\n");
 
@@ -141,14 +141,14 @@ bool test_pgtable() {
     TgtMemSetList stlist5;
     vector<TgtPgCpy> cplist5;
 
-    pgtable->apply_cow(0x10000UL, &stlist5, &cplist5);
-    pgtable2->apply_cow(0x10000UL, &stlist5, &cplist5);
-    pgtable->apply_cow(rwshm + 0x1000UL, &stlist5, &cplist5);
-    pgtable2->apply_cow(rwshm + 0x1000UL, &stlist5, &cplist5);
-    pgtable->apply_cow(rwpriv, &stlist5, &cplist5);
-    pgtable2->apply_cow(rwpriv, &stlist5, &cplist5);
-    pgtable->apply_cow(rfile + 0x1000UL, &stlist5, &cplist5);
-    pgtable2->apply_cow(rfile + 0x1000UL, &stlist5, &cplist5);
+    pgtable->apply_cow(0x10000UL, &stlist5, &cplist5, &needflush);
+    pgtable2->apply_cow(0x10000UL, &stlist5, &cplist5, &needflush);
+    pgtable->apply_cow(rwshm + 0x1000UL, &stlist5, &cplist5, &needflush);
+    pgtable2->apply_cow(rwshm + 0x1000UL, &stlist5, &cplist5, &needflush);
+    pgtable->apply_cow(rwpriv, &stlist5, &cplist5, &needflush);
+    pgtable2->apply_cow(rwpriv, &stlist5, &cplist5, &needflush);
+    pgtable->apply_cow(rfile + 0x1000UL, &stlist5, &cplist5, &needflush);
+    pgtable2->apply_cow(rfile + 0x1000UL, &stlist5, &cplist5, &needflush);
 
     printf("Now Page Table 1:\n");
     pgtable->debug_print_pgtable();

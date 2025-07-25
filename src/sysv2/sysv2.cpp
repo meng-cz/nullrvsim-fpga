@@ -276,12 +276,13 @@ bool SMPSystemV2::_check_vaddr_valid(uint32_t cpu_id, ThreadV2 *curt, VPageIndex
     PTET pte = curt->pgtable->pt_get(vpn, nullptr);
     TgtMemSetList stlist;
     vector<TgtPgCpy> cplist;
+    vector<VPageIndexT> needflush;
     if((pte & PTE_V) && (pte & PTE_NALLOC)) {
-        curt->pgtable->apply_cow(vpn << PAGE_ADDR_OFFSET, &stlist, &cplist);
+        curt->pgtable->apply_cow(vpn << PAGE_ADDR_OFFSET, &stlist, &cplist, &needflush);
         pte = curt->pgtable->pt_get(vpn, nullptr);
     }
     else if(!(pte & PTE_V)) {
-        if(!curt->pgtable->apply_cow_nonalloc(vpn << PAGE_ADDR_OFFSET, &stlist, &cplist)) {
+        if(!curt->pgtable->apply_cow_nonalloc(vpn << PAGE_ADDR_OFFSET, &stlist, &cplist, &needflush)) {
             return false;
         }
         pte = curt->pgtable->pt_get(vpn, nullptr);
@@ -292,8 +293,8 @@ bool SMPSystemV2::_check_vaddr_valid(uint32_t cpu_id, ThreadV2 *curt, VPageIndex
     for(auto &cp : cplist) {
         _perform_target_pagecpy(cpu_id, cp);
     }
-    if(stlist.size() || cplist.size()) {
-        cpus->flush_tlb_vpgidx(cpu_id, vpn << PAGE_ADDR_OFFSET, using_asid?(curt->asid):0);
+    for(auto fls : needflush) {
+        cpus->flush_tlb_vpgidx(cpu_id, fls << PAGE_ADDR_OFFSET, using_asid?(curt->asid):0);
         // cpus->flush_tlb_all(cpu_id);
     }
     if(ppn) {
@@ -436,6 +437,33 @@ bool SMPSystemV2::_strcpy_from_target(uint32_t cpu_id, char * dst, VirtAddrT tgt
     }
 }
 
+void SMPSystemV2::_perform_target_memsets(uint32_t cpu_id, TgtMemSetList &stlist) {
+    if(!enable_pgzero) {
+        for(auto &st : stlist) {
+            _perform_target_memset(cpu_id, st);
+        }
+        return;
+    }
+    TgtMemSetList non_zero;
+    vector<PageIndexT> zero_filled_pages;
+    for(auto &st : stlist) {
+        if(st.dwords == PAGE_LEN_BYTE/8 && !(st.base & (PAGE_LEN_BYTE - 1)) && st.value == 0 && st.multivalue.empty()) {
+            zero_filled_pages.push_back(st.base >> PAGE_ADDR_OFFSET);
+            st._skip = true;
+        } else {
+            st._skip = false;
+        }
+    }
+    if(zero_filled_pages.size()) {
+        cpus->pxymem_page_zero(cpu_id, zero_filled_pages);
+    }
+    for(auto &st : stlist) {
+        if(!st._skip) {
+            _perform_target_memset(cpu_id, st);
+        }
+    }
+}
+
 void SMPSystemV2::_perform_target_memset(uint32_t cpu_id, TgtMemSet64 &st) {
     if(st.dwords == PAGE_LEN_BYTE/8 && !(st.base & (PAGE_LEN_BYTE - 1))) {
         if(st.multivalue.size() == st.dwords) {
@@ -455,6 +483,12 @@ void SMPSystemV2::_perform_target_memset(uint32_t cpu_id, TgtMemSet64 &st) {
         //     }
         // }
         cpus->pxymem_write(cpu_id, st.base, st.value);
+    }
+}
+
+void SMPSystemV2::_perform_target_pagecpys(uint32_t cpu_id, vector<TgtPgCpy> &cplist) {
+    for(auto &cp : cplist) {
+        _perform_target_pagecpy(cpu_id, cp);
     }
 }
 
@@ -816,11 +850,12 @@ void SMPSystemV2::run_sim() {
 #define SYSCALL_CASE_V2(num, name) case num: nextpc = SYSCALL_FUNC_NAME_V2(num, name)(cpu_id, pc); break;
 
     while(cpus->next(&cpu_id, &pc, &cause, &arg)) {
-        RawDataT ecallid = cpus->regacc_read(cpu_id, ireg_index_of("a7"));
+        RawDataT ecallid = 0;
         VirtAddrT nextpc = 0;
         switch (cause)
         {
         case ITR_USR_ECALL:
+            ecallid = cpus->regacc_read(cpu_id, ireg_index_of("a7"));
             switch (ecallid)
             {
             SYSCALL_CASE_V2(17, getcwd);
@@ -2581,36 +2616,31 @@ VirtAddrT SMPSystemV2::_page_fault_rx(uint32_t cpu_id, VirtAddrT pc, VirtAddrT b
     PTET pte = CURT->pgtable->pt_get(vpn, nullptr);
     TgtMemSetList stlist;
     vector<TgtPgCpy> cplist;
+    vector<VPageIndexT> needflush;
 
-    if(!(pte & PTE_V)) {
-        if(CURT->pgtable->apply_cow_nonalloc(vpn << PAGE_ADDR_OFFSET, &stlist, &cplist)) {
-            for(auto &st : stlist) {
-                _perform_target_memset(cpu_id, st);
-            }
-            for(auto &cp : cplist) {
-                _perform_target_pagecpy(cpu_id, cp);
-            }
-            if(isx) {
-                cpus->flush_tlb_all(cpu_id);
-            } else {
-                cpus->flush_tlb_vpgidx(cpu_id, vpn << PAGE_ADDR_OFFSET, using_asid?(CURT->asid):0);
-            }
-            if(log_pgfault) { LOG_SYSCALL_2("page_fault_rx_alloc", "0x%lx", pc, "0x%lx", badaddr, "%d", 0); }
-            return pc;
-        }
-    }
-    else if((pte & PTE_V) && (pte & PTE_COW) && (pte & PTE_NALLOC)) {
-        CURT->pgtable->apply_cow(vpn << PAGE_ADDR_OFFSET, &stlist, &cplist);
-        for(auto &st : stlist) {
-            _perform_target_memset(cpu_id, st);
-        }
-        for(auto &cp : cplist) {
-            _perform_target_pagecpy(cpu_id, cp);
-        }
+    if(!(pte & PTE_V) && CURT->pgtable->apply_cow_nonalloc(vpn << PAGE_ADDR_OFFSET, &stlist, &cplist, &needflush)) {
+        _perform_target_memsets(cpu_id, stlist);
+        _perform_target_pagecpys(cpu_id, cplist);
         if(isx) {
             cpus->flush_tlb_all(cpu_id);
         } else {
-            cpus->flush_tlb_vpgidx(cpu_id, vpn << PAGE_ADDR_OFFSET, using_asid?(CURT->asid):0);
+            for(auto fls : needflush) {
+                cpus->flush_tlb_vpgidx(cpu_id, fls << PAGE_ADDR_OFFSET, using_asid?(CURT->asid):0);
+            }
+        }
+        if(log_pgfault) { LOG_SYSCALL_2("page_fault_rx_alloc", "0x%lx", pc, "0x%lx", badaddr, "%d", 0); }
+        return pc;
+    }
+    else if((pte & PTE_V) && (pte & PTE_COW) && (pte & PTE_NALLOC)) {
+        CURT->pgtable->apply_cow(vpn << PAGE_ADDR_OFFSET, &stlist, &cplist, &needflush);
+        _perform_target_memsets(cpu_id, stlist);
+        _perform_target_pagecpys(cpu_id, cplist);
+        if(isx) {
+            cpus->flush_tlb_all(cpu_id);
+        } else {
+            for(auto fls : needflush) {
+                cpus->flush_tlb_vpgidx(cpu_id, fls << PAGE_ADDR_OFFSET, using_asid?(CURT->asid):0);
+            }
         }
         
         if(log_pgfault) { LOG_SYSCALL_2("page_fault_rx", "0x%lx", pc, "0x%lx", badaddr, "%d", 0); }
@@ -2637,36 +2667,28 @@ VirtAddrT SMPSystemV2::_page_fault_w(uint32_t cpu_id, VirtAddrT pc, VirtAddrT ba
     PTET pte = CURT->pgtable->pt_get(vpn, nullptr);
     TgtMemSetList stlist;
     vector<TgtPgCpy> cplist;
+    vector<VPageIndexT> needflush;
 
-    if(!(pte & PTE_V)) {
-        if(CURT->pgtable->apply_cow_nonalloc(vpn << PAGE_ADDR_OFFSET, &stlist, &cplist)) {
-            for(auto &st : stlist) {
-                _perform_target_memset(cpu_id, st);
-            }
-            for(auto &cp : cplist) {
-                _perform_target_pagecpy(cpu_id, cp);
-            }
-            cpus->flush_tlb_vpgidx(cpu_id, vpn << PAGE_ADDR_OFFSET, using_asid?(CURT->asid):0);
-            if(log_pgfault) { LOG_SYSCALL_2("page_fault_w_alloc", "0x%lx", pc, "0x%lx", badaddr, "%d", 0); }
-            return pc;
+    if(!(pte & PTE_V) && CURT->pgtable->apply_cow_nonalloc(vpn << PAGE_ADDR_OFFSET, &stlist, &cplist, &needflush)) {
+        _perform_target_memsets(cpu_id, stlist);
+        _perform_target_pagecpys(cpu_id, cplist);
+        for(auto fls : needflush) {
+            cpus->flush_tlb_vpgidx(cpu_id, fls << PAGE_ADDR_OFFSET, using_asid?(CURT->asid):0);
         }
+        if(log_pgfault) { LOG_SYSCALL_2("page_fault_w_alloc", "0x%lx", pc, "0x%lx", badaddr, "%d", 0); }
+        return pc;
     }
     else if((pte & PTE_V) && (pte & PTE_COW)) {
-        CURT->pgtable->apply_cow(vpn << PAGE_ADDR_OFFSET, &stlist, &cplist);
-        for(auto &st : stlist) {
-            _perform_target_memset(cpu_id, st);
+        CURT->pgtable->apply_cow(vpn << PAGE_ADDR_OFFSET, &stlist, &cplist, &needflush);
+        _perform_target_memsets(cpu_id, stlist);
+        _perform_target_pagecpys(cpu_id, cplist);
+        for(auto fls : needflush) {
+            cpus->flush_tlb_vpgidx(cpu_id, fls << PAGE_ADDR_OFFSET, using_asid?(CURT->asid):0);
         }
-        for(auto &cp : cplist) {
-            _perform_target_pagecpy(cpu_id, cp);
-        }
-        cpus->flush_tlb_vpgidx(cpu_id, vpn << PAGE_ADDR_OFFSET, using_asid?(CURT->asid):0);
-        // cpus->flush_tlb_all(cpu_id);
-        
         if(log_pgfault) { LOG_SYSCALL_2("page_fault_w", "0x%lx", pc, "0x%lx", badaddr, "%d", 0); }
         return pc;
     } else if(pte & (PTE_V | PTE_W)) {
         cpus->flush_tlb_vpgidx(cpu_id, vpn << PAGE_ADDR_OFFSET, using_asid?(CURT->asid):0);
-        // cpus->flush_tlb_all(cpu_id);
         return pc;
     }
 

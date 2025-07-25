@@ -275,12 +275,12 @@ void ThreadPageTableV2::msync_writeback(VirtAddrT addr, uint64_t size, unordered
     }
 }
 
-bool ThreadPageTableV2::apply_cow_nonalloc(VirtAddrT addr, TgtMemSetList *stlist, vector<TgtPgCpy> *cplist) {
+bool ThreadPageTableV2::apply_cow_nonalloc(VirtAddrT addr, TgtMemSetList *stlist, vector<TgtPgCpy> *cplist, vector<VPageIndexT> *needflush) {
     VPageIndexT vpn = (addr >> PAGE_ADDR_OFFSET);
     PTET pte = pt_get(vpn, nullptr);
 
     if((pte & PTE_V) && (pte & PTE_COW)) {
-        apply_cow(addr, stlist, cplist);
+        apply_cow(addr, stlist, cplist, needflush);
         return true;
     }
     if(pte & PTE_V) {
@@ -291,20 +291,22 @@ bool ThreadPageTableV2::apply_cow_nonalloc(VirtAddrT addr, TgtMemSetList *stlist
     if(vseg) {
         PTET tmppte = (PTE_V | PTE_COW | PTE_NALLOC);
         pt->pt_insert(vpn, tmppte, stlist);
-        apply_cow(addr, stlist, cplist);
+        apply_cow(addr, stlist, cplist, needflush);
         return true;
     }
 
     return false;
 }
 
-void ThreadPageTableV2::apply_cow(VirtAddrT addr, TgtMemSetList *stlist, vector<TgtPgCpy> *cplist) {
+void ThreadPageTableV2::apply_cow(VirtAddrT addr, TgtMemSetList *stlist, vector<TgtPgCpy> *cplist, vector<VPageIndexT> *needflush) {
 
     PhysAddrT pte_tgt_addr = 0;
     VPageIndexT vpn = (addr >> PAGE_ADDR_OFFSET);
     PTET pte = pt_get(vpn, &pte_tgt_addr);
     simroot_assert(pte & PTE_V);
     simroot_assert(pte & PTE_COW);
+
+    needflush->push_back(vpn);
 
     if(pte & PTE_NALLOC) {
         // This is allocated by mmap without initialization
@@ -375,6 +377,27 @@ void ThreadPageTableV2::apply_cow(VirtAddrT addr, TgtMemSetList *stlist, vector<
                 .dwords = PAGE_LEN_BYTE/8,
                 .value = 0
             });
+            // pre-alloc
+            if(vseg->vpindex + vseg->vpcnt > vpn + 1) {
+                uint64_t prealloc_num = std::min<uint64_t>(16, vseg->vpindex + vseg->vpcnt - (vpn + 1));
+                for(uint64_t n = 0; n < prealloc_num; n++) {
+                    PTET pte = pt->pt_get(vpn + n + 1, nullptr);
+                    if(!(pte & PTE_V) || (pte & PTE_NALLOC)) {
+                        ppn = ppman->alloc();
+                        if(pte & PTE_V) {
+                            pt->pt_update(vpn + n + 1, (ppn << 10) | pte_flgs, stlist);
+                        } else {
+                            pt->pt_insert(vpn + n + 1, (ppn << 10) | pte_flgs, stlist);
+                        }
+                        stlist->emplace_back(TgtMemSet64{
+                            .base = (ppn * PAGE_LEN_BYTE),
+                            .dwords = PAGE_LEN_BYTE/8,
+                            .value = 0
+                        });
+                        needflush->push_back(vpn + n + 1);
+                    }
+                }
+            }
             return ;
         }
     } else {

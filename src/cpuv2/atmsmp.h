@@ -43,7 +43,9 @@ public:
     virtual void pxymem_page_write(uint32_t cpu_id, PageIndexT ppn, void * buf);
     virtual void pxymem_page_copy(uint32_t cpu_id, PageIndexT dst, PageIndexT src);
 
-
+    virtual void pxymem_page_zero(uint32_t cpu_id, vector<PageIndexT> &ppns) {
+        for(auto &ppn : ppns) pxymem_page_set(cpu_id, ppn, 0);
+    }
 
     virtual uint64_t get_current_tick() {
         return cur_tick;

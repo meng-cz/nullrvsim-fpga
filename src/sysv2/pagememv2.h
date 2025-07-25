@@ -17,6 +17,7 @@ typedef struct {
     uint64_t    dwords;
     RawDataT    value;
     vector<RawDataT> multivalue;
+    bool        _skip;
 } TgtMemSet64;
 typedef vector<TgtMemSet64> TgtMemSetList;
 

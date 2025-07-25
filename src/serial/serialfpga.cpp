@@ -348,8 +348,29 @@ uint64_t SerialFPGAAdapter::get_current_utick(uint32_t cpu_id) {
     int8_t value = _perform_op(SEROP_UCLK, buf, ret);
     simroot_assertf(SEROP_UCLK == value, "Operation UClock on Core %d Failed: %d", cpu_id, value);
     uint64_t rvalue = _pop_int(ret, 8);
-    DEBUGOP("UClock (0x%d) -> %ld", cpu_id, rvalue);
+    DEBUGOP("UClock (%d) -> %ld", cpu_id, rvalue);
     return rvalue;
+}
+
+void SerialFPGAAdapter::pxymem_page_zero(uint32_t cpu_id, vector<PageIndexT> &ppns) {
+
+    for(uint64_t cnt = 0; cnt < ppns.size(); ) {
+        uint64_t do_cnt = std::min<uint64_t>(64, ppns.size() - cnt);
+
+        vector<uint8_t> buf, ret;
+        _append_int(buf, cpu_id, 2);
+        _append_int(buf, do_cnt, 1);
+        for(uint64_t i = 0; i < do_cnt; i++) {
+            _append_int(buf, ppns[cnt + i], 5);
+        }
+        int8_t value = _perform_op(SEROP_PGZERO, buf, ret);
+        simroot_assertf(SEROP_UCLK == value, "Operation PGZERO(%ld pgs) on Core %d Failed: %d", do_cnt, cpu_id, value);
+        for(uint64_t i = 0; i < do_cnt; i++) {
+            DEBUGOP("PGZERO (0x%lx)", ppns[cnt + i]);
+        }
+
+        cnt += do_cnt;
+    }
 }
 
 

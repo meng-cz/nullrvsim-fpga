@@ -45,7 +45,9 @@ protected:
 
     void init_target_memory(TgtMemSetList &stlist);
 
+    void _perform_target_memsets(uint32_t cpu_id, TgtMemSetList &stlist);
     void _perform_target_memset(uint32_t cpu_id, TgtMemSet64 &st);
+    void _perform_target_pagecpys(uint32_t cpu_id, vector<TgtPgCpy> &cplist);
     void _perform_target_pagecpy(uint32_t cpu_id, TgtPgCpy &cp);
 
     VirtAddrT _pop_context_and_execute(uint32_t cpu_id);
@@ -317,6 +319,8 @@ protected:
 
     bool log_syscall = true;
     bool log_pgfault = true;
+
+    bool enable_pgzero = false;
 };
 
 #endif

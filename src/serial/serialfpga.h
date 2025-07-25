@@ -27,6 +27,8 @@ using simcpu::CPUGroupInterface;
 #define SEROP_UCLK          (17)    //  OP[8]       ID[16]                  -> ACK[8] CLK[64]
 #define SEROP_NUM           (18)
 
+#define SEROP_PGZERO        (18)    //  OP[8]   ID[16]  NUM[8]  PPNS[NUM*40] -> ACK[8]
+
 typedef vector<uint8_t> BufT;
 
 class SerialFPGAAdapter : public CPUGroupInterface, public TraceObject {
@@ -62,6 +64,8 @@ public:
 
     virtual uint64_t get_current_tick();
     virtual uint64_t get_current_utick(uint32_t cpu_id);
+
+    virtual void pxymem_page_zero(uint32_t cpu_id, vector<PageIndexT> &ppns);
 
     virtual void dump_core(std::ofstream &ofile);
     virtual void set_debug(bool on) { debug_op = on; };

@@ -41,8 +41,8 @@ public:
 
     void mprotect(VirtAddrT addr, uint64_t size, uint32_t prot_flag, TgtMemSetList *stlist);
 
-    void apply_cow(VirtAddrT addr, TgtMemSetList *stlist, vector<TgtPgCpy> *cplist);
-    bool apply_cow_nonalloc(VirtAddrT addr, TgtMemSetList *stlist, vector<TgtPgCpy> *cplist);
+    void apply_cow(VirtAddrT addr, TgtMemSetList *stlist, vector<TgtPgCpy> *cplist, vector<VPageIndexT> *needflush);
+    bool apply_cow_nonalloc(VirtAddrT addr, TgtMemSetList *stlist, vector<TgtPgCpy> *cplist, vector<VPageIndexT> *needflush);
 
     void init_brk(VirtAddrT brk) { brk_va = brk; };
     VirtAddrT alloc_brk(VirtAddrT brk, TgtMemSetList *stlist);
