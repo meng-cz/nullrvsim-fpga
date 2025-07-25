@@ -363,9 +363,8 @@ class NulCPUCtrlMP(cpunum: Int) extends Module {
             when(init_cnt === (cpunum - 1).U) {
                 state := STATE_RECV_HEAD
             }.otherwise {
-                val nextidx = (init_cnt + 1.U).pad(16)
-                oparg(0) := nextidx(7,0)
-                oparg(1) := nextidx(15,8)
+                val nextidx = (init_cnt + 1.U).pad(8)
+                oparg(1) := nextidx(7,0)
                 init_cnt := init_cnt + 1.U
             }
         }
