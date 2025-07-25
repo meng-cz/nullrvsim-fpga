@@ -407,14 +407,35 @@ void ThreadV2::elf_exec(SimWorkload &param, VirtAddrT *out_entry, VirtAddrT *out
         uint64_t vpi_end = (sttopva >> PAGE_ADDR_OFFSET);
         for(VPageIndexT vpn = vpi; vpn < vpi_end; vpn++) {
             PTET pte = pgtable->pt_get(vpn, nullptr);
-            stlist->emplace_back(TgtMemSet64{
-                .base = ((pte >> 10) << 12),
-                .dwords = PAGE_LEN_BYTE/8,
-                .value = 0
-            });
-            TgtMemSet64 &st = stlist->back();
-            st.multivalue.assign(PAGE_LEN_BYTE/8, 0);
-            memcpy(st.multivalue.data(), stbuf + ((sp >> PAGE_ADDR_OFFSET) << PAGE_ADDR_OFFSET), PAGE_LEN_BYTE);
+            if(!(pte & PTE_V) || (pte & PTE_NALLOC)) {
+                vector<TgtPgCpy> tmp1;
+                vector<VPageAddrT> tmp2;
+                if(pte & PTE_V) {
+                    pgtable->apply_cow(vpn << PAGE_ADDR_OFFSET, stlist, &tmp1, &tmp2);
+                } else {
+                    simroot_assert(pgtable->apply_cow_nonalloc(vpn << PAGE_ADDR_OFFSET, stlist, &tmp1, &tmp2));
+                }
+                simroot_assert(tmp1.empty());
+                pte = pgtable->pt_get(vpn, nullptr);
+                PhysAddrT tgt_addr = ((pte >> 10) << 12);
+                int64_t iter = stlist->size() - 1;
+                for(; iter >= 0; iter--) {
+                    if(stlist->at(iter).base == tgt_addr) break;
+                }
+                simroot_assert(iter >= 0);
+                TgtMemSet64 &st = stlist->at(iter);
+                st.multivalue.assign(PAGE_LEN_BYTE/8, 0);
+                memcpy(st.multivalue.data(), stbuf + ((sp >> PAGE_ADDR_OFFSET) << PAGE_ADDR_OFFSET), PAGE_LEN_BYTE);
+            } else {
+                stlist->emplace_back(TgtMemSet64{
+                    .base = ((pte >> 10) << 12),
+                    .dwords = PAGE_LEN_BYTE/8,
+                    .value = 0
+                });
+                TgtMemSet64 &st = stlist->back();
+                st.multivalue.assign(PAGE_LEN_BYTE/8, 0);
+                memcpy(st.multivalue.data(), stbuf + ((sp >> PAGE_ADDR_OFFSET) << PAGE_ADDR_OFFSET), PAGE_LEN_BYTE);
+            }
         }
     }
     delete[] stbuf;
