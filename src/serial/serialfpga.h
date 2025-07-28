@@ -67,6 +67,9 @@ public:
 
     virtual void pxymem_page_zero(uint32_t cpu_id, vector<PageIndexT> &ppns);
 
+    virtual void hfutex_setmask(uint32_t cpu_id, VirtAddrT vaddr) {};
+    virtual void hfutex_clearmask(uint32_t cpu_id) {};
+
     virtual void dump_core(std::ofstream &ofile);
     virtual void set_debug(bool on) { debug_op = on; };
 

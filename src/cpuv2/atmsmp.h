@@ -47,6 +47,9 @@ public:
         for(auto &ppn : ppns) pxymem_page_set(cpu_id, ppn, 0);
     }
 
+    virtual void hfutex_setmask(uint32_t cpu_id, VirtAddrT vaddr);
+    virtual void hfutex_clearmask(uint32_t cpu_id);
+
     virtual uint64_t get_current_tick() {
         return cur_tick;
     };
@@ -79,6 +82,7 @@ typedef struct {
     RawDataT    fcsr;
     unordered_map<uint64_t, uint64_t> tlb;
     uint64_t    finished_inst_cnt;
+    set<VirtAddrT>  hfutex_mask;
 } CoreState;
 
     vector<CoreState> cores;

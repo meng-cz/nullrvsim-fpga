@@ -40,6 +40,9 @@ public:
     virtual uint64_t get_current_utick(uint32_t cpu_id) = 0;
 
     virtual void pxymem_page_zero(uint32_t cpu_id, vector<PageIndexT> &ppns) = 0;
+
+    virtual void hfutex_setmask(uint32_t cpu_id, VirtAddrT vaddr) = 0;
+    virtual void hfutex_clearmask(uint32_t cpu_id) = 0;
 };
 
 

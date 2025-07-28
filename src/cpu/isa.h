@@ -28,6 +28,8 @@ namespace isa {
 #define ITR_LD_PGFAULT      (13)
 #define ITR_ST_PGFAULT      (15)
 
+#define RV_ECALL_FUTEX      (98)
+
 #define RV_REG_CNT_INT  (32)
 #define RV_REG_CNT_FP  (32)
 

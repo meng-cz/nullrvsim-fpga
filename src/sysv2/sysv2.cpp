@@ -31,6 +31,7 @@ SMPSystemV2::SMPSystemV2(SimWorkload &workload, CPUGroupInterface *cpus, uint32_
     running_threads.assign(cpu_num, nullptr);
     last_running_tids.assign(cpu_num, 0);
     last_running_mmu.assign(cpu_num, 0);
+    hfutex_mask.resize(cpu_num);
 
     using_asid = conf::get_int("root", "using_asid", 0);
 
@@ -163,6 +164,10 @@ VirtAddrT SMPSystemV2::_pop_context_and_execute(uint32_t cpu_id) {
         cpus->flush_tlb_all(cpu_id);
         last_running_mmu[cpu_id] = (ptbase | asid);
         last_running_tids[cpu_id] = thread->tid;
+        if(hfutex_mask[cpu_id].size()) {
+            hfutex_mask[cpu_id].clear();
+            cpus->hfutex_clearmask(cpu_id);
+        }
     }
 
     // Flush memory operation during waiting
@@ -1789,6 +1794,12 @@ SYSCALL_DEFINE_V2(98, futex) {
         futex_wait_thread_insert(paddr, CURT, (futex_op == FUTEX_WAIT_BITSET)?(val3):0, cpu_id);
         VirtAddrT nextpc = switch_next_thread_and_execute(cpu_id, SWFLAG_WAIT);
         sch_lock.unlock();
+        for(uint32_t i = 0; i < cpu_num; i++) {
+            if(hfutex_mask[i].find(paddr) != hfutex_mask[i].end()) {
+                hfutex_mask[i].clear();
+                cpus->hfutex_clearmask(cpu_id);
+            }
+        }
         return nextpc;
     }
     else if(futex_op == FUTEX_WAKE || futex_op == FUTEX_WAKE_BITSET) {
@@ -1803,6 +1814,10 @@ SYSCALL_DEFINE_V2(98, futex) {
             insert_ready_thread_and_execute(buf.thread, buf.last_cpu_id);
         }
         sch_lock.unlock();
+        if(futex_op == FUTEX_WAKE && wake_cnt == 0) {
+            cpus->hfutex_setmask(cpu_id, uaddr);
+            hfutex_mask[cpu_id].emplace(paddr, uaddr);
+        }
         LOG_SYSCALL_4("futex_wake", "0x%lx", uaddr, "%d", futex_op, "0x%x", val, "0x%x", futex_mask, "%ld", wake_cnt);
         ECALL_RET(wake_cnt, pc+4);
     }

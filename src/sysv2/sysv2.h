@@ -100,6 +100,7 @@ protected:
 
 
 
+    vector<unordered_map<PhysAddrT, VirtAddrT>> hfutex_mask;
 
     typedef struct {
         ThreadV2 *      thread = nullptr;
