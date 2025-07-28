@@ -147,7 +147,9 @@ const uint64_t SEROP_RET_BITS[SEROP_NUM] = {
     0,
     0,
     64,
-    64
+    64,
+    0,
+    0
 };
 
 int8_t SerialFPGAAdapter::_perform_op(int8_t op, BufT &data, BufT &retdata) {
@@ -374,6 +376,23 @@ void SerialFPGAAdapter::pxymem_page_zero(uint32_t cpu_id, vector<PageIndexT> &pp
 
         cnt += do_cnt;
     }
+}
+
+void SerialFPGAAdapter::hfutex_setmask(uint32_t cpu_id, VirtAddrT vaddr) {
+    vector<uint8_t> buf, ret;
+    _append_int(buf, cpu_id, 1);
+    _append_int(buf, vaddr, 6);
+    int8_t value = _perform_op(SEROP_HFSET, buf, ret);
+    simroot_assertf(SEROP_HFSET == value, "Operation HFSET on Core %d (0x%lx) Failed: %d", cpu_id, vaddr, value);
+    DEBUGOP("HFSET (0x%lx)", vaddr);
+}
+
+void SerialFPGAAdapter::hfutex_clearmask(uint32_t cpu_id) {
+    vector<uint8_t> buf, ret;
+    _append_int(buf, cpu_id, 1);
+    int8_t value = _perform_op(SEROP_HFCLR, buf, ret);
+    simroot_assertf(SEROP_HFCLR == value, "Operation HFCLR on Core %d Failed: %d", cpu_id, value);
+    DEBUGOP("HFCLR");
 }
 
 

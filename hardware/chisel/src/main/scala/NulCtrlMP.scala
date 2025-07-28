@@ -10,8 +10,11 @@ class NulCPUCtrlMP(cpunum: Int) extends Module {
     val is_sv48 = false
     val is_hard_fp = true
 
-    assert(cpunum > 1)
-    val cpunum_bitwid = log2Ceil(cpunum)
+    val RV_ITR_ECALL = 8.U
+    val ECALL_FUTEX = 98.U
+
+    assert(cpunum > 0)
+    val cpunum_bitwid = if (cpunum > 1) { log2Ceil(cpunum) } else { 1 }
 
     val io = IO(new Bundle {
         val cpu     = Vec(cpunum, new NulCPUBundle())
@@ -72,7 +75,7 @@ class NulCPUCtrlMP(cpunum: Int) extends Module {
     when(has_itr && event_queue.io.enq.ready) {
         cpu_raised_itr(event_idx) := false.B
     }
-    
+
     val SEROP_NEXT  = 0.U
     val SEROP_HALT  = 1.U
     val SEROP_ITR   = 2.U
@@ -91,7 +94,9 @@ class NulCPUCtrlMP(cpunum: Int) extends Module {
     val SEROP_PGCP  = 15.U
     val SEROP_CLK   = 16.U
     val SEROP_UCLK  = 17.U
-    val SEROP_INST  = 20.U
+    val SEROP_HFSET = 18.U
+    val SEROP_HFCLR = 19.U
+    val SEROP_INST  = 30.U
 
     val STATE_INIT_WAIT     = 0.U 
     val STATE_DO_INIT       = 1.U
@@ -117,6 +122,7 @@ class NulCPUCtrlMP(cpunum: Int) extends Module {
     val STATE_PGCP          = 21.U 
     val STATE_SYNCI         = 22.U 
     val STATE_INST          = 23.U 
+    val STATE_HFUTEX        = 24.U 
 
     val state = RegInit(0.U(5.W))
     val trans_bytes = RegInit(0.U(10.W))
@@ -137,13 +143,32 @@ class NulCPUCtrlMP(cpunum: Int) extends Module {
         for(i <- 0 until cpunum) { cpu_state(i) := CPU_HALT }
     }
 
+    val hfutex_masks = RegInit(VecInit(Seq.fill(cpunum*4)(0.U(48.W))))
+    val hfutex_pos = RegInit(VecInit(Seq.fill(cpunum)(0.U(2.W))))
+    def hfutex_set(vaddr : UInt) {
+        hfutex_masks((opidx << 2) | hfutex_pos(opidx)) := vaddr
+        hfutex_pos(opidx) := (hfutex_pos(opidx) + 1.U)(1, 0)
+    }
+    def hfutex_clr() {
+        for(i <- 0 to 4) {
+            hfutex_masks((opidx << 2) | i.U) := 0.U
+        }
+    }
+    def hfutex_match(vaddr : UInt) : Bool = {
+        val selectedVec = Wire(Vec(4, UInt(48.W)))
+        for (i <- 0 until 4) {
+            selectedVec(i) := hfutex_masks((opidx << 2) | i.U)
+        }
+        selectedVec.map(_ === vaddr).reduce(_ || _)
+    }
+    
     when(state === STATE_RECV_HEAD && io.rx.valid) {
         val rxop = io.rx.bits(4, 0)
         val rxoff = io.rx.bits(7, 5)
         opcode := rxop
         opoff := rxoff
 
-        when(rxop === SEROP_HALT || rxop === SEROP_ITR || rxop === SEROP_FTLB || rxop === SEROP_SYNCI || rxop === SEROP_UCLK) {
+        when(rxop === SEROP_HALT || rxop === SEROP_ITR || rxop === SEROP_FTLB || rxop === SEROP_SYNCI || rxop === SEROP_UCLK || rxop === SEROP_HFCLR) {
             trans_bytes := 2.U 
         }.elsewhen(rxop === SEROP_REGRD) {
             trans_bytes := 4.U 
@@ -151,7 +176,7 @@ class NulCPUCtrlMP(cpunum: Int) extends Module {
             trans_bytes := 6.U 
         }.elsewhen(rxop === SEROP_PGRD || rxop === SEROP_PGWT) {
             trans_bytes := 7.U 
-        }.elsewhen(rxop === SEROP_REDIR || rxop === SEROP_MEMRD) {
+        }.elsewhen(rxop === SEROP_REDIR || rxop === SEROP_MEMRD || rxop === SEROP_HFSET) {
             trans_bytes := 8.U 
         }.elsewhen(rxop === SEROP_MMU || rxop === SEROP_FTLB2) {
             trans_bytes := 9.U 
@@ -209,6 +234,12 @@ class NulCPUCtrlMP(cpunum: Int) extends Module {
                     retarg(i) := user_clk(opidx)(i*8+7, i*8)
                 }
             }
+            is(SEROP_HFSET) {
+                hfutex_set(Cat(oparg(7), oparg(6), oparg(5), oparg(4), oparg(3), oparg(2)))
+            }
+            is(SEROP_HFCLR) {
+                hfutex_clr()
+            }
             is(SEROP_INST) { state := STATE_INST }
         }
     }.elsewhen(state === STATE_RECV_ARG && io.rx.valid) {
@@ -264,7 +295,7 @@ class NulCPUCtrlMP(cpunum: Int) extends Module {
     val cnt = RegInit(1.U(128.W))
     val regback = RegInit(VecInit(Seq.fill(10)(0.U(64.W))))
 
-    val reg_idxs = Array(5.U, 6.U, 7.U, 8.U, 9.U, 10.U, 11.U, 12.U, 13.U, 14.U)
+    val reg_idxs = Array(5.U, 6.U, 7.U, 8.U, 9.U, 10.U, 11.U, 12.U, 13.U, 14.U, 15.U, 16.U, 17.U)
 
     def read_reg(idx: Int, dst: UInt) {
         sel_cpu.regacc_rd := true.B
@@ -495,9 +526,72 @@ class NulCPUCtrlMP(cpunum: Int) extends Module {
         when(cnt(8)) { read_reg_to_retarg(1, 2, 6) }
         when(cnt(9)) { read_reg_to_retarg(2, 8, 6) }
         recover_regs(10, 3)
-        when(cnt(13)) {
+        when(cnt(13)) { read_reg(12, regback(0)) }
+        when(cnt(14)) {
+            cnt := 1.U
+            when(retarg(1) === RV_ITR_ECALL && regback(0) === ECALL_FUTEX) {
+                state := STATE_HFUTEX
+            }.otherwise {
+                state := STATE_SEND_HEAD
+            }
+        }
+    }
+
+    when(state === STATE_HFUTEX) {
+        when(cnt(1)) { read_reg(5, regback(0)) }
+        when(cnt(2)) { read_reg(6, regback(1)) }
+        when(cnt(3)) {
+            when(regback(1) === 1.U && regback(0) =/= 0.U && hfutex_match(regback(0)(47,0))) {
+                cnt := (cnt << 1)
+            }.otherwise {
+                cnt := 1.U
+                state := STATE_SEND_HEAD
+            }
+        }
+        when(cnt(4)) { invoke_inst("h34102573".U) } // csrrs x10, mepc, x0
+        when(cnt(5)) { invoke_inst("h00450513".U) } // addi x10, x10, 4
+        when(cnt(6)) { invoke_inst("h34151073".U) } // csrrw x0, mepc, x10
+        when(cnt(7)) { invoke_inst("h00300513".U) } // addi x10, x0, 3
+        when(cnt(8)) { invoke_inst("h00b51513".U) } // slli x10, x10, 11
+        when(cnt(9)) { invoke_inst("h30053073".U) } // csrrc x0, mstatus, x10
+        when(cnt(10)) {
+            if(is_hard_fp) {
+                invoke_inst("h00002537".U) // lui x10, 2
+            } else {
+                cnt := (cnt << 1)
+            }
+        }
+        when(cnt(11)) {
+            if(is_hard_fp) {
+                invoke_inst("h30052073".U) // csrs mstatus,x10
+            } else {
+                cnt := (cnt << 1)
+            }
+        }
+        when(cnt(12)) {
+            if(is_hard_fp) {
+                invoke_inst("h00301073".U) // csrrw x0, fcsr, x0
+            } else {
+                cnt := (cnt << 1)
+            }
+        }
+        when(cnt(13)) { invoke_inst("h0330000f".U) } // fence rw, rw
+        when(cnt(14)) { invoke_inst("h00000537".U) } // lui x10, 0
+        when(cnt(15)) { wait_inst() }
+        when(cnt(16)) {
+            sel_cpu.inst64_nowait := true.B
+            invoke_inst("h30200073".U)
+            when(sel_cpu.inst64_ready) {
+                cpu_state(opidx) := CPU_USER
+            }
+        } // mret
+        when(cnt(17)) {
+            sel_cpu.inst64_flush := true.B 
+            cnt := (cnt << 1)
+        }
+        when(cnt(18)) {
             cnt := 1.U 
-            state := STATE_SEND_HEAD
+            state := STATE_WAIT_NEXT
         }
     }
 

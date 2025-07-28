@@ -25,9 +25,11 @@ using simcpu::CPUGroupInterface;
 #define SEROP_PGCP          (15)    //  OP[8]       ID[8] DST[40] SRC[40]  -> ACK[8]
 #define SEROP_CLK           (16)    //  OP[8]                               -> ACK[8] CLK[64]
 #define SEROP_UCLK          (17)    //  OP[8]       ID[8]                  -> ACK[8] CLK[64]
-#define SEROP_NUM           (18)
+#define SEROP_HFSET         (18)    //  OP[8]       ID[8] VA[48]           -> ACK[8]
+#define SEROP_HFCLR         (19)    //  OP[8]       ID[8]                  -> ACK[8]
+#define SEROP_NUM           (20)
 
-#define SEROP_PGZERO        (18)    //  OP[8]   ID[8]  NUM[8]  PPNS[NUM*40] -> ACK[8]
+#define SEROP_PGZERO        (31)    //  OP[8]   ID[8]  NUM[8]  PPNS[NUM*40] -> ACK[8]
 
 typedef vector<uint8_t> BufT;
 
@@ -67,8 +69,8 @@ public:
 
     virtual void pxymem_page_zero(uint32_t cpu_id, vector<PageIndexT> &ppns);
 
-    virtual void hfutex_setmask(uint32_t cpu_id, VirtAddrT vaddr) {};
-    virtual void hfutex_clearmask(uint32_t cpu_id) {};
+    virtual void hfutex_setmask(uint32_t cpu_id, VirtAddrT vaddr);
+    virtual void hfutex_clearmask(uint32_t cpu_id);
 
     virtual void dump_core(std::ofstream &ofile);
     virtual void set_debug(bool on) { debug_op = on; };
