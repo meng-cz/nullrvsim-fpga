@@ -61,6 +61,7 @@ protected:
 
     bool has_init = false;
     bool has_hard_fp = false;
+    uint64_t stack_size = 8*1024UL*1024UL;
 
     uint64_t start_tick = 0;
     vector<uint64_t> start_uticks;

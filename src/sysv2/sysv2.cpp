@@ -32,6 +32,7 @@ SMPSystemV2::SMPSystemV2(SimWorkload &workload, CPUGroupInterface *cpus, uint32_
     last_running_tids.assign(cpu_num, 0);
     last_running_mmu.assign(cpu_num, 0);
     hfutex_mask.resize(cpu_num);
+    stack_size = workload.stack_size;
 
     using_asid = conf::get_int("root", "using_asid", 0);
 
@@ -2494,8 +2495,28 @@ SYSCALL_DEFINE_V2(260, wait4) {
 SYSCALL_DEFINE_V2(261, prlimit) {
     uint64_t pid = IREG_V(a0);
     uint64_t resource = IREG_V(a1);
+    VirtAddrT newlimit = IREG_V(a2);
+    VirtAddrT oldlimit = IREG_V(a3);
 
-    LOG_SYSCALL_2("prlimit", "%ld", pid, "%ld", resource, "%ld", 0UL);
+    if(resource == RLIMIT_STACK) {
+        struct rlimit hbuf;
+        hbuf.rlim_cur = hbuf.rlim_max = stack_size;
+        if(oldlimit && !_memcpy_to_target(cpu_id, oldlimit, &hbuf, sizeof(hbuf))) {
+            LOG_SYSCALL_4("prlimit", "%ld", pid, "%ld", resource, "0x%lx", newlimit, "0x%lx", oldlimit, "%s", "EFAULT");
+            ECALL_RET(-EFAULT, pc+4);
+        }
+        if(newlimit && !_memcpy_from_target(cpu_id, &hbuf, newlimit, sizeof(hbuf))) {
+            LOG_SYSCALL_4("prlimit", "%ld", pid, "%ld", resource, "0x%lx", newlimit, "0x%lx", oldlimit, "%s", "EFAULT");
+            ECALL_RET(-EFAULT, pc+4);
+        }
+        if(newlimit) {
+            stack_size = hbuf.rlim_max;
+        }
+    } else {
+        simroot_assertf(0, "CPU %d Raise PTLimit with Unimplement Resource %ld", cpu_id, resource);
+    }
+
+    LOG_SYSCALL_4("prlimit", "%ld", pid, "%ld", resource, "0x%lx", newlimit, "0x%lx", oldlimit, "%ld", 0UL);
     ECALL_RET(0, pc+4);
 }
 
