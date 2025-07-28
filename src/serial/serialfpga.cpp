@@ -50,6 +50,7 @@ int32_t get_baudrate_const(int baudrate) {
 SerialFPGAAdapter::SerialFPGAAdapter(string devfile, uint32_t baudrate) {
 
     dbg = conf::get_int("serial", "debug_enable", 0);
+    debug_runtime = conf::get_int("root", "debug_runtime", 0);
     always_flush_all = conf::get_int("root", "flush_tlb_all", 0);
 
     fd = open(devfile.c_str(), O_RDWR | O_NOCTTY | O_SYNC);
@@ -164,7 +165,7 @@ int8_t SerialFPGAAdapter::_perform_op(int8_t op, BufT &data, BufT &retdata) {
     return ret;
 }
 
-#define DEBUGOP(fmt, ...) do { if(debug_op) printf("SERIAL FPGA CPU %d: " fmt "\n", cpu_id, ##__VA_ARGS__); } while(0)
+#define DEBUGOP(fmt, ...) do { if(debug_op||debug_runtime) printf("SERIAL FPGA CPU %d: " fmt "\n", cpu_id, ##__VA_ARGS__); } while(0)
 
 void SerialFPGAAdapter::halt(uint32_t cpu_id) {
     vector<uint8_t> buf, ret;

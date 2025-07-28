@@ -93,6 +93,7 @@ private:
 
     int32_t dbg = 0;
     bool debug_op = false;
+    bool debug_runtime = false;
 };
 
 
