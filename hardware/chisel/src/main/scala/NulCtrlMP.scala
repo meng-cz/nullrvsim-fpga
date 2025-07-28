@@ -154,13 +154,6 @@ class NulCPUCtrlMP(cpunum: Int) extends Module {
             hfutex_masks((opidx << 2) | i.U) := 0.U
         }
     }
-    def hfutex_match(vaddr : UInt) : Bool = {
-        val selectedVec = Wire(Vec(4, UInt(48.W)))
-        for (i <- 0 until 4) {
-            selectedVec(i) := hfutex_masks((opidx << 2) | i.U)
-        }
-        selectedVec.map(_ === vaddr).reduce(_ || _)
-    }
     
     when(state === STATE_RECV_HEAD && io.rx.valid) {
         val rxop = io.rx.bits(4, 0)
@@ -537,11 +530,17 @@ class NulCPUCtrlMP(cpunum: Int) extends Module {
         }
     }
 
+    val selected_hfutex_addr = Wire(Vec(4, UInt(48.W)))
+    for (i <- 0 until 4) {
+        selected_hfutex_addr(i) := hfutex_masks((opidx << 2) | i.U)
+    }
+    val hfutex_hit_regback0 = selected_hfutex_addr.map(_ === regback(0)(47,0)).reduce(_ || _)
+    
     when(state === STATE_HFUTEX) {
         when(cnt(0)) { read_reg(5, regback(0)) }
         when(cnt(1)) { read_reg(6, regback(1)) }
         when(cnt(2)) {
-            when(regback(1) === 1.U && regback(0) =/= 0.U && hfutex_match(regback(0)(47,0))) {
+            when(regback(1) === 1.U && regback(0) =/= 0.U && hfutex_hit_regback0) {
                 cnt := (cnt << 1)
             }.otherwise {
                 cnt := 1.U

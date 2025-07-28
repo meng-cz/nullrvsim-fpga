@@ -705,3 +705,142 @@ bool test_serial_4c1(string dev_path) {
     return true;
 
 }
+
+
+bool test_serial_futex(string dev_path) {
+    
+    uint32_t baudrate = conf::get_int("serial", "baudrate", 115200);
+
+    uint64_t mem_base = conf::get_inthex("root", "memory_base_addr_hex", 0);
+    simroot_assert((mem_base % PAGE_LEN_BYTE) == 0);
+
+    SerialFPGAAdapter * dev = new SerialFPGAAdapter(dev_path, baudrate);
+
+    const uint64_t test_data = 0x1122334455667788UL;
+    const uint64_t test_data2 = 0x8877665544332211UL;
+
+    printf("Test 6 Start\n");
+
+    TgtMemSetList stlist;
+
+    unique_ptr<PhysPageAllocatorV2> ppman = make_unique<PhysPageAllocatorV2>(mem_base, 512UL * 1024UL * 1024UL);
+
+    unique_ptr<PageTable4K> pt = make_unique<PageTable4K>(PTType::SV39, ppman.get(), &stlist);
+
+    PhysAddrT pt_base = pt->get_page_table_base();
+
+    printf("Init test pagetable on physical address 0x%lx\n", pt_base);
+
+    PageIndexT inst_pg = ppman->alloc();
+    PageIndexT data_pg = ppman->alloc();
+    PageIndexT data_pg2 = ppman->alloc();
+    VPageIndexT inst_vpn = 0x20UL;
+    VPageIndexT data_vpn = 0x10UL;
+
+    pt->pt_insert(inst_vpn, (inst_pg << 10) | PTE_LEAF_V | PTE_R | PTE_X, &stlist);
+    pt->pt_insert(data_vpn, (data_pg << 10) | PTE_LEAF_V | PTE_R | PTE_W, &stlist);
+
+    vector<uint32_t> insts;
+    insts.push_back(0x00010537U); // lui	a0,0x10
+    insts.push_back(0x00100593U); // li	a1,1
+    insts.push_back(0x0ff00613U); // li	a2,255
+    insts.push_back(0x06200893U); // li	a7,98
+    insts.push_back(0x00000073U); // ecall
+    insts.push_back(0x00a00893U); // li	a7,10
+    insts.push_back(0x00000073U); // ecall
+    for(int i = 0; i < 12; i++) {
+        insts.push_back(0x00000013U);
+    }
+
+    stlist.emplace_back();
+    stlist.back().base = (inst_pg << 12);
+    stlist.back().dwords = insts.size()/2;
+    stlist.back().value = 0;
+    stlist.back().multivalue.assign(insts.size()/2, 0);
+    memcpy(stlist.back().multivalue.data(), insts.data(), (insts.size()/2)*8);
+
+    stlist.emplace_back();
+    stlist.back().base = (data_pg << 12);
+    stlist.back().dwords = 1;
+    stlist.back().value = test_data;
+
+    stlist.emplace_back();
+    stlist.back().base = (data_pg2 << 12);
+    stlist.back().dwords = 1;
+    stlist.back().value = test_data2;
+
+
+    for(auto &st : stlist) {
+        _target_memst(dev, st);
+    }
+
+    printf("Setup MMU\n");
+    dev->set_mmu(0, pt_base, 0);
+
+    printf("Flush TLB\n");
+    dev->flush_tlb_all(0);
+
+    printf("\nFence-I\n");
+    dev->sync_inst_stream(0);
+    
+    printf("Start ILA Trigger 1, and Type \"1\" to Continue...\n");
+    do {
+        if(getchar() == '1') break;
+    } while(true);
+
+    printf("\nRedirect to VAddr 0x%lx\n", inst_vpn << 12);
+    dev->redirect(0, inst_vpn << 12);
+
+    
+    printf("Start ILA Trigger 2, and Type \"1\" to Continue...\n");
+    do {
+        if(getchar() == '1') break;
+    } while(true);
+    uint32_t cpuid = 0;
+    VirtAddrT pc = 0;
+    uint32_t cause = 0;
+    uint64_t arg = 0;
+    assert(dev->next(&cpuid, &pc, &cause, &arg));
+
+    printf("Got Event on CPU %d, @0x%lx, Cause %d, Arg 0x%lx\n", cpuid, pc, cause, arg);
+
+    printf("A7 Value: 0x%lx, A0 Value: 0x%lx\n",
+        dev->regacc_read(0, isa::ireg_index_of("a7")),
+        dev->regacc_read(0, isa::ireg_index_of("a0"))
+    );
+
+    simroot_assert(dev->regacc_read(0, isa::ireg_index_of("a7")) == 98);
+
+    printf("Flush TLB\n");
+    dev->flush_tlb_vpgidx(0, data_vpn << 12, 0);
+
+    printf("Start ILA Trigger 3, and Type \"1\" to Continue...\n");
+    do {
+        if(getchar() == '1') break;
+    } while(true);
+
+    printf("\nRedirect to VAddr 0x%lx\n", inst_vpn << 12);
+    dev->redirect(0, inst_vpn << 12);
+
+    printf("Start ILA Trigger 4, and Type \"1\" to Continue...\n");
+    do {
+        if(getchar() == '1') break;
+    } while(true);
+
+    assert(dev->next(&cpuid, &pc, &cause, &arg));
+
+    printf("Got Event on CPU %d, @0x%lx, Cause %d, Arg 0x%lx\n", cpuid, pc, cause, arg);
+
+    printf("A7 Value: 0x%lx, A0 Value: 0x%lx\n",
+        dev->regacc_read(0, isa::ireg_index_of("a7")),
+        dev->regacc_read(0, isa::ireg_index_of("a0"))
+    );
+
+    simroot_assert(dev->regacc_read(0, isa::ireg_index_of("a7")) == 10);
+
+    printf("Test futex PASSED\n");
+
+    return true;
+
+}
+
