@@ -538,9 +538,9 @@ class NulCPUCtrlMP(cpunum: Int) extends Module {
     }
 
     when(state === STATE_HFUTEX) {
-        when(cnt(1)) { read_reg(5, regback(0)) }
-        when(cnt(2)) { read_reg(6, regback(1)) }
-        when(cnt(3)) {
+        when(cnt(0)) { read_reg(5, regback(0)) }
+        when(cnt(1)) { read_reg(6, regback(1)) }
+        when(cnt(2)) {
             when(regback(1) === 1.U && regback(0) =/= 0.U && hfutex_match(regback(0)(47,0))) {
                 cnt := (cnt << 1)
             }.otherwise {
@@ -548,48 +548,48 @@ class NulCPUCtrlMP(cpunum: Int) extends Module {
                 state := STATE_SEND_HEAD
             }
         }
-        when(cnt(4)) { invoke_inst("h34102573".U) } // csrrs x10, mepc, x0
-        when(cnt(5)) { invoke_inst("h00450513".U) } // addi x10, x10, 4
-        when(cnt(6)) { invoke_inst("h34151073".U) } // csrrw x0, mepc, x10
-        when(cnt(7)) { invoke_inst("h00300513".U) } // addi x10, x0, 3
-        when(cnt(8)) { invoke_inst("h00b51513".U) } // slli x10, x10, 11
-        when(cnt(9)) { invoke_inst("h30053073".U) } // csrrc x0, mstatus, x10
-        when(cnt(10)) {
+        when(cnt(3)) { invoke_inst("h34102573".U) } // csrrs x10, mepc, x0
+        when(cnt(4)) { invoke_inst("h00450513".U) } // addi x10, x10, 4
+        when(cnt(5)) { invoke_inst("h34151073".U) } // csrrw x0, mepc, x10
+        when(cnt(6)) { invoke_inst("h00300513".U) } // addi x10, x0, 3
+        when(cnt(7)) { invoke_inst("h00b51513".U) } // slli x10, x10, 11
+        when(cnt(8)) { invoke_inst("h30053073".U) } // csrrc x0, mstatus, x10
+        when(cnt(9)) {
             if(is_hard_fp) {
                 invoke_inst("h00002537".U) // lui x10, 2
             } else {
                 cnt := (cnt << 1)
             }
         }
-        when(cnt(11)) {
+        when(cnt(10)) {
             if(is_hard_fp) {
                 invoke_inst("h30052073".U) // csrs mstatus,x10
             } else {
                 cnt := (cnt << 1)
             }
         }
-        when(cnt(12)) {
+        when(cnt(11)) {
             if(is_hard_fp) {
                 invoke_inst("h00301073".U) // csrrw x0, fcsr, x0
             } else {
                 cnt := (cnt << 1)
             }
         }
-        when(cnt(13)) { invoke_inst("h0330000f".U) } // fence rw, rw
-        when(cnt(14)) { invoke_inst("h00000537".U) } // lui x10, 0
-        when(cnt(15)) { wait_inst() }
-        when(cnt(16)) {
+        when(cnt(12)) { invoke_inst("h0330000f".U) } // fence rw, rw
+        when(cnt(13)) { invoke_inst("h00000537".U) } // lui x10, 0
+        when(cnt(14)) { wait_inst() }
+        when(cnt(15)) {
             sel_cpu.inst64_nowait := true.B
             invoke_inst("h30200073".U)
             when(sel_cpu.inst64_ready) {
                 cpu_state(opidx) := CPU_USER
             }
         } // mret
-        when(cnt(17)) {
+        when(cnt(16)) {
             sel_cpu.inst64_flush := true.B 
             cnt := (cnt << 1)
         }
-        when(cnt(18)) {
+        when(cnt(17)) {
             cnt := 1.U 
             state := STATE_WAIT_NEXT
         }
