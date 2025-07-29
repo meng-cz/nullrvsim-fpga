@@ -143,16 +143,12 @@ class NulCPUCtrlMP(cpunum: Int) extends Module {
         for(i <- 0 until cpunum) { cpu_state(i) := CPU_HALT }
     }
 
-    val hfutex_masks = RegInit(VecInit(Seq.fill(cpunum*4)(0.U(48.W))))
+    val hfutex_masks = RegInit(VecInit(Seq.fill(cpunum)(VecInit(Seq.fill(4)(0.U(48.W))))))
     val hfutex_pos = RegInit(VecInit(Seq.fill(cpunum)(0.U(2.W))))
     val hfutex_match_reg = RegInit(0.U(48.W))
-    val selected_hfutex_addr = Wire(Vec(4, UInt(48.W)))
-    for (i <- 0 until 4) {
-        selected_hfutex_addr(i) := hfutex_masks((opidx << 2) + i.U)
-    }
-    val hfutex_hit = selected_hfutex_addr.map(_ === hfutex_match_reg).reduce(_ || _)
     val hfutex_set_value = Cat(oparg(7), oparg(6), oparg(5), oparg(4), oparg(3), oparg(2))
-    val hfutex_hit_set = selected_hfutex_addr.map(_ === hfutex_set_value).reduce(_ || _)
+    val hfutex_hit = hfutex_masks(opidx).map(_ === hfutex_match_reg).reduce(_ || _)
+    val hfutex_hit_set = hfutex_masks(opidx).map(_ === hfutex_set_value).reduce(_ || _)
     
     
     when(state === STATE_RECV_HEAD && io.rx.valid) {
@@ -229,13 +225,13 @@ class NulCPUCtrlMP(cpunum: Int) extends Module {
             }
             is(SEROP_HFSET) {
                 when(!hfutex_hit_set) {
-                    hfutex_masks((opidx << 2) + hfutex_pos(opidx)) := hfutex_set_value
-                    hfutex_pos(opidx) := (hfutex_pos(opidx) + 1.U)(1, 0)
+                    hfutex_masks(opidx)(hfutex_pos(opidx)) := hfutex_set_value
+                    hfutex_pos(opidx) := Mux(hfutex_pos(opidx) === 3.U, 0.U, hfutex_pos(opidx) + 1.U)
                 }
             }
             is(SEROP_HFCLR) {
-                for(i <- 0 to 4) {
-                    hfutex_masks((opidx << 2) + i.U) := 0.U
+                for(i <- 0 to 3) {
+                    hfutex_masks(opidx)(i) := 0.U
                 }
             }
             is(SEROP_INST) { state := STATE_INST }
