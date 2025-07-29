@@ -154,6 +154,15 @@ class NulCPUCtrlMP(cpunum: Int) extends Module {
             hfutex_masks((opidx << 2) | i.U) := 0.U
         }
     }
+    val hfutex_match_reg = RegInit(0.U(48.W))
+    val selected_hfutex_addr = Wire(Vec(4, UInt(48.W)))
+    for (i <- 0 until 4) {
+        selected_hfutex_addr(i) := hfutex_masks((opidx << 2) | i.U)
+    }
+    val hfutex_hit = selected_hfutex_addr.map(_ === hfutex_match_reg).reduce(_ || _)
+    val hfutex_set_value = Cat(oparg(7), oparg(6), oparg(5), oparg(4), oparg(3), oparg(2))
+    val hfutex_hit_set = selected_hfutex_addr.map(_ === hfutex_set_value).reduce(_ || _)
+    
     
     when(state === STATE_RECV_HEAD && io.rx.valid) {
         val rxop = io.rx.bits(4, 0)
@@ -228,7 +237,9 @@ class NulCPUCtrlMP(cpunum: Int) extends Module {
                 }
             }
             is(SEROP_HFSET) {
-                hfutex_set(Cat(oparg(7), oparg(6), oparg(5), oparg(4), oparg(3), oparg(2)))
+                when(!hfutex_hit_set) {
+                    hfutex_set(hfutex_set_value)
+                }
             }
             is(SEROP_HFCLR) {
                 hfutex_clr()
@@ -530,17 +541,11 @@ class NulCPUCtrlMP(cpunum: Int) extends Module {
         }
     }
 
-    val selected_hfutex_addr = Wire(Vec(4, UInt(48.W)))
-    for (i <- 0 until 4) {
-        selected_hfutex_addr(i) := hfutex_masks((opidx << 2) | i.U)
-    }
-    val hfutex_hit_regback0 = selected_hfutex_addr.map(_ === regback(0)(47,0)).reduce(_ || _)
-    
     when(state === STATE_HFUTEX) {
-        when(cnt(0)) { read_reg(5, regback(0)) }
+        when(cnt(0)) { read_reg(5, hfutex_match_reg) }
         when(cnt(1)) { read_reg(6, regback(1)) }
         when(cnt(2)) {
-            when(regback(1) === 1.U && regback(0) =/= 0.U && hfutex_hit_regback0) {
+            when(regback(1) === 1.U && hfutex_match_reg =/= 0.U && hfutex_hit) {
                 cnt := (cnt << 1)
             }.otherwise {
                 cnt := 1.U
