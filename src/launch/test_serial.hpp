@@ -783,19 +783,9 @@ bool test_serial_futex(string dev_path) {
     printf("\nFence-I\n");
     dev->sync_inst_stream(0);
     
-    printf("Start ILA Trigger 1, and Type \"1\" to Continue...\n");
-    do {
-        if(getchar() == '1') break;
-    } while(true);
-
     printf("\nRedirect to VAddr 0x%lx\n", inst_vpn << 12);
     dev->redirect(0, inst_vpn << 12);
-
     
-    printf("Start ILA Trigger 2, and Type \"1\" to Continue...\n");
-    do {
-        if(getchar() == '1') break;
-    } while(true);
     uint32_t cpuid = 0;
     VirtAddrT pc = 0;
     uint32_t cause = 0;
@@ -816,18 +806,8 @@ bool test_serial_futex(string dev_path) {
     
     dev->hfutex_setmask(0, 0x10000UL);
 
-    printf("Start ILA Trigger 3, and Type \"1\" to Continue...\n");
-    do {
-        if(getchar() == '1') break;
-    } while(true);
-
     printf("\nRedirect to VAddr 0x%lx\n", inst_vpn << 12);
     dev->redirect(0, inst_vpn << 12);
-
-    printf("Start ILA Trigger 4, and Type \"1\" to Continue...\n");
-    do {
-        if(getchar() == '1') break;
-    } while(true);
 
     assert(dev->next(&cpuid, &pc, &cause, &arg));
 
@@ -839,6 +819,22 @@ bool test_serial_futex(string dev_path) {
     );
 
     simroot_assert(dev->regacc_read(0, isa::ireg_index_of("a7")) == 10);
+
+    dev->hfutex_clearmask(0);
+    
+    printf("\nRedirect to VAddr 0x%lx\n", inst_vpn << 12);
+    dev->redirect(0, inst_vpn << 12);
+
+    assert(dev->next(&cpuid, &pc, &cause, &arg));
+
+    printf("Got Event on CPU %d, @0x%lx, Cause %d, Arg 0x%lx\n", cpuid, pc, cause, arg);
+
+    printf("A7 Value: 0x%lx, A0 Value: 0x%lx\n",
+        dev->regacc_read(0, isa::ireg_index_of("a7")),
+        dev->regacc_read(0, isa::ireg_index_of("a0"))
+    );
+
+    simroot_assert(dev->regacc_read(0, isa::ireg_index_of("a7")) == 98);
 
     printf("Test futex PASSED\n");
 
