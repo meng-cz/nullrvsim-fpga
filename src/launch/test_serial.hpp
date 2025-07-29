@@ -813,6 +813,8 @@ bool test_serial_futex(string dev_path) {
 
     printf("Flush TLB\n");
     dev->flush_tlb_vpgidx(0, data_vpn << 12, 0);
+    
+    dev->hfutex_setmask(0, 0x10000UL);
 
     printf("Start ILA Trigger 3, and Type \"1\" to Continue...\n");
     do {
