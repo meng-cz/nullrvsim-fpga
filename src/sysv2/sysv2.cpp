@@ -1798,7 +1798,7 @@ SYSCALL_DEFINE_V2(98, futex) {
         for(uint32_t i = 0; i < cpu_num; i++) {
             if(hfutex_mask[i].find(paddr) != hfutex_mask[i].end()) {
                 hfutex_mask[i].clear();
-                cpus->hfutex_clearmask(cpu_id);
+                cpus->hfutex_clearmask(i);
             }
         }
         return nextpc;
