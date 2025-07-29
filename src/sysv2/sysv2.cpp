@@ -1781,7 +1781,7 @@ SYSCALL_DEFINE_V2(98, futex) {
 
     if(futex_op == FUTEX_WAIT || futex_op == FUTEX_WAIT_BITSET) {
         VirtAddrT timeout = IREG_V(a3);
-        uint32_t val2 = IREG_V(a3);
+        uint32_t val2 = timeout;
         uint32_t val3 = IREG_V(a5);
         RawDataT _v = cpus->pxymem_read(cpu_id, paddr & (~7UL));
         uint32_t v = ((paddr & 4) ? (_v >> 32) : _v);

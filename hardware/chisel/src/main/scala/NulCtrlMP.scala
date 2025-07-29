@@ -147,7 +147,7 @@ class NulCPUCtrlMP(cpunum: Int) extends Module {
     val hfutex_pos = RegInit(VecInit(Seq.fill(cpunum)(0.U(2.W))))
     def hfutex_set(vaddr : UInt) {
         hfutex_masks((opidx << 2) | hfutex_pos(opidx)) := vaddr
-        hfutex_pos(opidx) := (hfutex_pos(opidx) + 1.U)(1, 0)
+        hfutex_pos(opidx) := (hfutex_pos(opidx) + 1.U)(2, 0)
     }
     def hfutex_clr() {
         for(i <- 0 to 4) {
