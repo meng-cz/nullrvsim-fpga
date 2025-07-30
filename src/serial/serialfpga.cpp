@@ -131,7 +131,7 @@ uint64_t SerialFPGAAdapter::_pop_int(BufT &buf, uint64_t bytes) {
 }
 
 const uint64_t SEROP_RET_BITS[SEROP_NUM] = {
-    8+8+48,
+    8+8+48+48,
     0,
     0,
     0,
@@ -209,10 +209,7 @@ bool SerialFPGAAdapter::next(uint32_t *itr_cpu, VirtAddrT *itr_pc, uint32_t *itr
     *itr_cpu = _pop_int(ret, 1);
     *itr_cause = _pop_int(ret, 1);
     *itr_pc = _pop_int(ret, 6);
-    *itr_arg = 0;
-    if(*itr_cause != ITR_USR_ECALL) {
-        _read_serial(itr_arg, 6);
-    }
+    *itr_arg = _pop_int(ret, 6);
     uint32_t cpu_id = *itr_cpu;
     DEBUGOP("Next -> (0x%lx, %d, 0x%lx)", *itr_pc, *itr_cause, *itr_arg);
     return (*itr_cpu != 0xff);

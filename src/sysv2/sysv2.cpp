@@ -856,12 +856,11 @@ void SMPSystemV2::run_sim() {
 #define SYSCALL_CASE_V2(num, name) case num: nextpc = SYSCALL_FUNC_NAME_V2(num, name)(cpu_id, pc); break;
 
     while(cpus->next(&cpu_id, &pc, &cause, &arg)) {
-        RawDataT ecallid = 0;
+        RawDataT ecallid = arg;
         VirtAddrT nextpc = 0;
         switch (cause)
         {
         case ITR_USR_ECALL:
-            ecallid = cpus->regacc_read(cpu_id, ireg_index_of("a7"));
             switch (ecallid)
             {
             SYSCALL_CASE_V2(17, getcwd);

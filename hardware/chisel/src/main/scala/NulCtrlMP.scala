@@ -247,7 +247,7 @@ class NulCPUCtrlMP(cpunum: Int) extends Module {
         trans_pos := 0.U
         when(io.tx.ready) {
             when(opcode === SEROP_NEXT) {
-                trans_bytes := Mux(retarg(1) === 8.U, 8.U, 14.U)
+                trans_bytes := 14.U
                 state := STATE_SEND_ARG
             }.elsewhen(opcode === SEROP_REGRD || opcode === SEROP_MEMRD || opcode === SEROP_CLK || opcode === SEROP_UCLK) {
                 trans_bytes := 8.U
@@ -525,6 +525,11 @@ class NulCPUCtrlMP(cpunum: Int) extends Module {
             cnt := 1.U
             when(retarg(1) === RV_ITR_ECALL && regback(0) === ECALL_FUTEX) {
                 state := STATE_HFUTEX
+            }.elsewhen(retarg(1) === RV_ITR_ECALL) {
+                for(i <- 0 to 5) {
+                    retarg(8+i) := regback(0)(i*8+7, i*8)
+                }
+                state := STATE_SEND_HEAD
             }.otherwise {
                 state := STATE_SEND_HEAD
             }
