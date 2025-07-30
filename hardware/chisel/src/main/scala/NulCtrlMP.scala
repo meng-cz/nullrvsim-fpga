@@ -540,7 +540,7 @@ class NulCPUCtrlMP(cpunum: Int) extends Module {
         when(cnt(0)) { read_reg(5, hfutex_match_reg) }
         when(cnt(1)) { read_reg(6, regback(1)) }
         when(cnt(2)) {
-            when(regback(1) === 1.U && hfutex_match_reg =/= 0.U && hfutex_hit) {
+            when((regback(1)(6, 0)) === 1.U && hfutex_match_reg =/= 0.U && hfutex_hit) {
                 cnt := (cnt << 1)
             }.otherwise {
                 cnt := 1.U
