@@ -523,13 +523,13 @@ class NulCPUCtrlMP(cpunum: Int) extends Module {
         when(cnt(13)) { read_reg(12, regback(0)) }
         when(cnt(14)) {
             cnt := 1.U
-            when(retarg(1) === RV_ITR_ECALL && regback(0) === ECALL_FUTEX) {
-                state := STATE_HFUTEX
-            }.elsewhen(retarg(1) === RV_ITR_ECALL) {
+            when(retarg(1) === RV_ITR_ECALL) {
                 for(i <- 0 to 5) {
                     retarg(8+i) := regback(0)(i*8+7, i*8)
                 }
-                state := STATE_SEND_HEAD
+            }
+            when(retarg(1) === RV_ITR_ECALL && regback(0) === ECALL_FUTEX) {
+                state := STATE_HFUTEX
             }.otherwise {
                 state := STATE_SEND_HEAD
             }
