@@ -138,13 +138,17 @@ bool AtomicSMPCores::next(uint32_t *itr_cpu, VirtAddrT *itr_pc, uint32_t *itr_ca
                 *itr_arg = cores[i].itr_arg;
                 cores[i].interrupt = false;
 
+                if(*itr_cause == ITR_USR_ECALL) {
+                    *itr_arg = cores[i].reg[isa::ireg_index_of("a7")];
+                }
+
                 if(*itr_cause == ITR_USR_ECALL
                     && cores[i].reg[isa::ireg_index_of("a7")] == RV_ECALL_FUTEX
                     && (cores[i].reg[isa::ireg_index_of("a1")] & 127) == 1
                     && (cores[i].hfutex_mask.find(cores[i].reg[isa::ireg_index_of("a0")]) != cores[i].hfutex_mask.end())
                 ) {
                     if(debug_runtime) {
-                        printf("CPU %d: skip futex wake on vaddr 0x%lx @0x%lx", i, cores[i].reg[isa::ireg_index_of("a0")], cores[i].pc);
+                        printf("CPU %d: skip futex wake on vaddr 0x%lx @0x%lx\n", i, cores[i].reg[isa::ireg_index_of("a0")], cores[i].pc);
                     }
                     cores[i].pc += 4;
                     cores[i].reg[isa::ireg_index_of("a0")] = 0;
@@ -220,11 +224,13 @@ void AtomicSMPCores::pxymem_page_copy(uint32_t cpu_id, PageIndexT dst, PageIndex
 }
 
 void AtomicSMPCores::hfutex_setmask(uint32_t cpu_id, VirtAddrT vaddr) {
-    cores[cpu_id].hfutex_mask.insert(vaddr);
+    // cores[cpu_id].hfutex_mask.insert(vaddr);
+    // LOG_RUNTIME("HFSet(0x%lx)", vaddr);
 }
 
 void AtomicSMPCores::hfutex_clearmask(uint32_t cpu_id) {
     cores[cpu_id].hfutex_mask.clear();
+    LOG_RUNTIME("HFClr");
 }
 
 bool AtomicSMPCores::_page_trans_and_check(uint32_t id, VirtAddrT vaddr, uint32_t flag, PhysAddrT *paddr) {
