@@ -33,6 +33,8 @@ protected:
 
     vector<VMSegInfo> segs;
 
+    VPageIndexT brk = 0;
+
 };
 
 

@@ -4,7 +4,7 @@
 #include "simroot.h"
 
 VirtMemSegTable::VirtMemSegTable(VPageIndexT vpstart, VPageIndexT vpend) : Start(vpstart), End(vpend) {
-
+    brk = Start;
 }
 
 VirtMemSegTable::VirtMemSegTable(VirtMemSegTable *parent, vector<std::pair<VPageIndexT, VPageIndexT>> &shared_interval) {
@@ -20,18 +20,21 @@ VirtMemSegTable::VirtMemSegTable(VirtMemSegTable *parent, vector<std::pair<VPage
             s.fd->ref_cnt++;
         }
     }
+
+    this->brk = parent->brk;
 }
 
 VPageIndexT VirtMemSegTable::find_pos(uint64_t vpcnt) {
 
-    VPageIndexT valid_start = Start;
-    for(auto &s : segs) {
-        if(s.vpindex >= valid_start + vpcnt) {
-            return valid_start;
-        } else {
-            valid_start = s.vpindex + s.vpcnt;
-        }
-    }
+    VPageIndexT valid_start = brk;
+    // VPageIndexT valid_start = Start;
+    // for(auto &s : segs) {
+    //     if(s.vpindex >= valid_start + vpcnt) {
+    //         return valid_start;
+    //     } else {
+    //         valid_start = s.vpindex + s.vpcnt;
+    //     }
+    // }
     simroot_assertf(End >= valid_start + vpcnt, "Virtual Memory Space RUN OUT: MMAP");
     return valid_start;
 }
@@ -53,6 +56,8 @@ void VirtMemSegTable::insert(VMSegInfo &seg) {
         if(iter->vpindex > seg.vpindex) break;
     }
     segs.insert(iter, seg);
+
+    brk = std::max<VPageIndexT>(brk, seg.vpindex + seg.vpcnt);
 }
 
 void VirtMemSegTable::erase(VPageIndexT pgstart, uint64_t pgcnt, vector<VMSegInfo> &poped) {
