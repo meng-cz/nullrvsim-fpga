@@ -23,7 +23,7 @@ class NulCPUCtrlMP(cpunum: Int) extends Module {
         val dbg_sta = Output(UInt(8.W))
     })
 
-    io.rx.ready := true.B
+    io.rx.ready := false.B
     io.tx.valid := false.B 
     io.tx.bits := 0.U 
 
@@ -76,26 +76,27 @@ class NulCPUCtrlMP(cpunum: Int) extends Module {
         cpu_raised_itr(event_idx) := false.B
     }
 
-    val SEROP_NEXT  = 0.U
-    val SEROP_HALT  = 1.U
-    val SEROP_ITR   = 2.U
-    val SEROP_MMU   = 3.U
-    val SEROP_REDIR = 4.U
-    val SEROP_FTLB  = 5.U
-    val SEROP_FTLB2 = 6.U
-    val SEROP_SYNCI = 7.U
-    val SEROP_REGRD = 8.U
-    val SEROP_REGWT = 9.U
-    val SEROP_MEMRD = 10.U
-    val SEROP_MEMWT = 11.U
-    val SEROP_PGRD  = 12.U
-    val SEROP_PGST  = 13.U
-    val SEROP_PGWT  = 14.U
-    val SEROP_PGCP  = 15.U
-    val SEROP_CLK   = 16.U
-    val SEROP_UCLK  = 17.U
-    val SEROP_HFSET = 18.U
-    val SEROP_HFCLR = 19.U
+    val SEROP_NEXT  = 0.U   //  OP[8]                               -> ACK[8] ID[8] CAUSE[8] PC[48] (ARG[48])
+    val SEROP_HALT  = 1.U   //  OP[8]       ID[8]                  -> ACK[8]
+    val SEROP_ITR   = 2.U   //  OP[8]       ID[8]                  -> ACK[8]
+    val SEROP_MMU   = 3.U   //  OP[8]       ID[8] ASID[16] PT[40]  -> ACK[8]
+    val SEROP_REDIR = 4.U   //  OP[8]       ID[8] PC[48]           -> ACK[8]
+    val SEROP_FTLB  = 5.U   //  OP[8]       ID[8]                  -> ACK[8]
+    val SEROP_FTLB2 = 6.U   //  OP[8]       ID[8] ASID[16] VPN[40] -> ACK[8]
+    val SEROP_SYNCI = 7.U   //  OP[8]       ID[8]                  -> ACK[8]
+    val SEROP_REGRD = 8.U   //  OP[8]       ID[8] REG[16]          -> ACK[8] DATA[64]
+    val SEROP_REGWT = 9.U   //  OP[8]       ID[8] REG[16] DATA[64] -> ACK[8]
+    val SEROP_MEMRD = 10.U  //  OP[8]       ID[8] PA[48]           -> ACK[8] DATA[64]
+    val SEROP_MEMWT = 11.U  //  OP[8]       ID[8] PA[48] DATA[64]  -> ACK[8]
+    val SEROP_PGRD  = 12.U  //  OFF[3]OP[5] ID[8] PPN[40]          -> ACK[8] DATA[512B]
+    val SEROP_PGST  = 13.U  //  OP[8]       ID[8] PPN[40] VALUE[64]-> ACK[8]
+    val SEROP_PGWT  = 14.U  //  OFF[3]OP[5] ID[8] PPN[40]          DATA[512B]-> ACK[8]
+    val SEROP_PGCP  = 15.U  //  OP[8]       ID[8] DST[40] SRC[40]  -> ACK[8]
+    val SEROP_CLK   = 16.U  //  OP[8]                               -> ACK[8] CLK[64]
+    val SEROP_UCLK  = 17.U  //  OP[8]       ID[8]                  -> ACK[8] CLK[64]
+    val SEROP_HFSET = 18.U  //  OP[8]       ID[8] VA[48]           -> ACK[8]
+    val SEROP_HFCLR = 19.U  //  OP[8]       ID[8]                  -> ACK[8]
+    val SEROP_PGZERO = 20.U //  OP[8]       ID[8] PPN[40]          -> ACK[8]
     val SEROP_INST  = 30.U
 
     val STATE_INIT_WAIT     = 0.U 
@@ -150,7 +151,9 @@ class NulCPUCtrlMP(cpunum: Int) extends Module {
     val hfutex_hit = hfutex_masks(opidx).map(_ === hfutex_match_reg).reduce(_ || _)
     val hfutex_hit_set = hfutex_masks(opidx).map(_ === hfutex_set_value).reduce(_ || _)
     
-    
+    when(state === STATE_RECV_HEAD) {
+        io.rx.ready := true.B
+    }
     when(state === STATE_RECV_HEAD && io.rx.valid) {
         val rxop = io.rx.bits(4, 0)
         val rxoff = io.rx.bits(7, 5)
@@ -163,7 +166,7 @@ class NulCPUCtrlMP(cpunum: Int) extends Module {
             trans_bytes := 4.U 
         }.elsewhen(rxop === SEROP_INST) {
             trans_bytes := 6.U 
-        }.elsewhen(rxop === SEROP_PGRD || rxop === SEROP_PGWT) {
+        }.elsewhen(rxop === SEROP_PGRD || rxop === SEROP_PGWT || rxop === SEROP_PGZERO) {
             trans_bytes := 7.U 
         }.elsewhen(rxop === SEROP_REDIR || rxop === SEROP_MEMRD || rxop === SEROP_HFSET) {
             trans_bytes := 8.U 
@@ -183,6 +186,9 @@ class NulCPUCtrlMP(cpunum: Int) extends Module {
         state := STATE_RECV_ARG
     }
 
+    when(state === STATE_RECV_ARG && trans_bytes =/= trans_pos) {
+        io.rx.ready := true.B
+    }
     when(state === STATE_RECV_ARG && trans_bytes === trans_pos) {
         trans_bytes := 1.U
         trans_pos := 1.U
@@ -211,6 +217,12 @@ class NulCPUCtrlMP(cpunum: Int) extends Module {
             is(SEROP_MEMWT) { state := STATE_MEMWT }
             is(SEROP_PGRD) { state := STATE_PGRD }
             is(SEROP_PGST) { state := STATE_PGST }
+            is(SEROP_PGZERO) {
+                state := STATE_PGST
+                for(i <- 0 to 7) {
+                    oparg(i + 7) := 0.U
+                }
+            }
             is(SEROP_PGWT) { state := STATE_PGWT }
             is(SEROP_PGCP) { state := STATE_PGCP }
             is(SEROP_CLK) {
@@ -821,6 +833,9 @@ class NulCPUCtrlMP(cpunum: Int) extends Module {
     val wt_byte_buf = RegInit(VecInit(Seq.fill(8)(0.U(8.W))))
 
     when(state === STATE_PGWT) {
+        when(pgbuf_uart_pos =/= 512.U) {
+            io.rx.ready := true.B
+        }
         when(io.rx.valid && pgbuf_uart_pos =/= 512.U) {
             wt_byte_buf(wt_byte_cnt) := io.rx.bits
             when(wt_byte_cnt === 7.U) {
@@ -885,6 +900,7 @@ class NulCPUCtrlMPWithUart(cpunum: Int, frequency: Int, baudRate: Int) extends M
     val ctrl = Module(new NulCPUCtrlMP(cpunum))
     val tx = Module(new Tx(frequency, baudRate))
     val rx = Module(new Rx(frequency, baudRate))
+    val rxbuffer = Module(new Queue(UInt(8.W), 512))
 
     io.dbg_sta := ctrl.io.dbg_sta
 
@@ -892,7 +908,8 @@ class NulCPUCtrlMPWithUart(cpunum: Int, frequency: Int, baudRate: Int) extends M
     io.txd := tx.io.txd 
     rx.io.rxd := io.rxd 
     ctrl.io.tx <> tx.io.channel
-    ctrl.io.rx <> rx.io.channel
+    ctrl.io.rx <> rxbuffer.io.deq
+    rxbuffer.io.enq <> rx.io.channel
 }
 
 object NulCPUCtrlUartMPMain extends App {

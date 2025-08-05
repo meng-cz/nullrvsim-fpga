@@ -27,9 +27,9 @@ using simcpu::CPUGroupInterface;
 #define SEROP_UCLK          (17)    //  OP[8]       ID[8]                  -> ACK[8] CLK[64]
 #define SEROP_HFSET         (18)    //  OP[8]       ID[8] VA[48]           -> ACK[8]
 #define SEROP_HFCLR         (19)    //  OP[8]       ID[8]                  -> ACK[8]
-#define SEROP_NUM           (20)
+#define SEROP_PGZERO        (20)    //  OP[8]       ID[8] PPN[40]          -> ACK[8]
+#define SEROP_NUM           (21)
 
-#define SEROP_PGZERO        (31)    //  OP[8]   ID[8]  NUM[8]  PPNS[NUM*40] -> ACK[8]
 
 typedef vector<uint8_t> BufT;
 

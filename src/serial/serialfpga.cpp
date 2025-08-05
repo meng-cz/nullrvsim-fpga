@@ -150,6 +150,7 @@ const uint64_t SEROP_RET_BITS[SEROP_NUM] = {
     64,
     64,
     0,
+    0,
     0
 };
 
@@ -357,23 +358,24 @@ uint64_t SerialFPGAAdapter::get_current_utick(uint32_t cpu_id) {
 
 void SerialFPGAAdapter::pxymem_page_zero(uint32_t cpu_id, vector<PageIndexT> &ppns) {
 
-    for(uint64_t cnt = 0; cnt < ppns.size(); ) {
-        uint64_t do_cnt = std::min<uint64_t>(64, ppns.size() - cnt);
+    // for(uint64_t cnt = 0; cnt < ppns.size(); ) {
+    //     uint64_t do_cnt = std::min<uint64_t>(128, ppns.size() - cnt);
 
-        vector<uint8_t> buf, ret;
-        _append_int(buf, cpu_id, 1);
-        _append_int(buf, do_cnt, 1);
-        for(uint64_t i = 0; i < do_cnt; i++) {
-            _append_int(buf, ppns[cnt + i], 5);
-        }
-        int8_t value = _perform_op(SEROP_PGZERO, buf, ret);
-        simroot_assertf(SEROP_UCLK == value, "Operation PGZERO(%ld pgs) on Core %d Failed: %d", do_cnt, cpu_id, value);
-        for(uint64_t i = 0; i < do_cnt; i++) {
-            DEBUGOP("PGZERO (0x%lx)", ppns[cnt + i]);
-        }
+    //     vector<uint8_t> buf, ret;
+    //     _append_int(buf, cpu_id, 1);
+    //     _append_int(buf, do_cnt, 1);
+    //     for(uint64_t i = 0; i < do_cnt; i++) {
+    //         _append_int(buf, ppns[cnt + i], 5);
+    //     }
+    //     int8_t value = _perform_op(SEROP_PGZERO, buf, ret);
+    //     simroot_assertf(SEROP_UCLK == value, "Operation PGZERO(%ld pgs) on Core %d Failed: %d", do_cnt, cpu_id, value);
+    //     for(uint64_t i = 0; i < do_cnt; i++) {
+    //         DEBUGOP("PGZERO (0x%lx)", ppns[cnt + i]);
+    //     }
 
-        cnt += do_cnt;
-    }
+    //     cnt += do_cnt;
+    // }
+    assert(0);
 }
 
 void SerialFPGAAdapter::hfutex_setmask(uint32_t cpu_id, VirtAddrT vaddr) {
