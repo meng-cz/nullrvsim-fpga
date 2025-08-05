@@ -224,8 +224,8 @@ void AtomicSMPCores::pxymem_page_copy(uint32_t cpu_id, PageIndexT dst, PageIndex
 }
 
 void AtomicSMPCores::hfutex_setmask(uint32_t cpu_id, VirtAddrT vaddr) {
-    // cores[cpu_id].hfutex_mask.insert(vaddr);
-    // LOG_RUNTIME("HFSet(0x%lx)", vaddr);
+    cores[cpu_id].hfutex_mask.insert(vaddr);
+    LOG_RUNTIME("HFSet(0x%lx)", vaddr);
 }
 
 void AtomicSMPCores::hfutex_clearmask(uint32_t cpu_id) {
