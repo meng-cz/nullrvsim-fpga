@@ -7,29 +7,6 @@
 
 using simcpu::CPUGroupInterface;
 
-#define SEROP_NEXT          (0)     //  OP[8]                               -> ACK[8] ID[8] CAUSE[8] PC[48] (ARG[48])
-#define SEROP_HALT          (1)     //  OP[8]       ID[8]                  -> ACK[8]
-#define SEROP_ITR           (2)     //  OP[8]       ID[8]                  -> ACK[8]
-#define SEROP_MMU           (3)     //  OP[8]       ID[8] ASID[16] PT[40]  -> ACK[8]
-#define SEROP_REDIR         (4)     //  OP[8]       ID[8] PC[48]           -> ACK[8]
-#define SEROP_FTLB          (5)     //  OP[8]       ID[8]                  -> ACK[8]
-#define SEROP_FTLB2         (6)     //  OP[8]       ID[8] ASID[16] VPN[40] -> ACK[8]
-#define SEROP_SYNCI         (7)     //  OP[8]       ID[8]                  -> ACK[8]
-#define SEROP_REGRD         (8)     //  OP[8]       ID[8] REG[16]          -> ACK[8] DATA[64]
-#define SEROP_REGWT         (9)     //  OP[8]       ID[8] REG[16] DATA[64] -> ACK[8]
-#define SEROP_MEMRD         (10)    //  OP[8]       ID[8] PA[48]           -> ACK[8] DATA[64]
-#define SEROP_MEMWT         (11)    //  OP[8]       ID[8] PA[48] DATA[64]  -> ACK[8]
-#define SEROP_PGRD          (12)    //  OFF[3]OP[5] ID[8] PPN[40]          -> ACK[8] DATA[512B]
-#define SEROP_PGST          (13)    //  OP[8]       ID[8] PPN[40] VALUE[64]-> ACK[8]
-#define SEROP_PGWT          (14)    //  OFF[3]OP[5] ID[8] PPN[40]          DATA[512B]-> ACK[8]
-#define SEROP_PGCP          (15)    //  OP[8]       ID[8] DST[40] SRC[40]  -> ACK[8]
-#define SEROP_CLK           (16)    //  OP[8]                               -> ACK[8] CLK[64]
-#define SEROP_UCLK          (17)    //  OP[8]       ID[8]                  -> ACK[8] CLK[64]
-#define SEROP_HFSET         (18)    //  OP[8]       ID[8] VA[48]           -> ACK[8]
-#define SEROP_HFCLR         (19)    //  OP[8]       ID[8]                  -> ACK[8]
-#define SEROP_PGZERO        (20)    //  OP[8]       ID[8] PPN[40]          -> ACK[8]
-#define SEROP_NUM           (21)
-
 
 typedef vector<uint8_t> BufT;
 
@@ -39,6 +16,8 @@ public:
 
     SerialFPGAAdapter(string devfile, uint32_t bps);
     ~SerialFPGAAdapter();
+
+    virtual void process_frames(HTPFrames &frames);
 
     virtual void halt(uint32_t cpu_id);
     virtual void interrupt(uint32_t cpu_id);
@@ -63,11 +42,11 @@ public:
     virtual void pxymem_page_set(uint32_t cpu_id, PageIndexT ppn, RawDataT value);
     virtual void pxymem_page_write(uint32_t cpu_id, PageIndexT ppn, void * dbuf);
     virtual void pxymem_page_copy(uint32_t cpu_id, PageIndexT dst, PageIndexT src);
+    virtual void pxymem_page_zero(uint32_t cpu_id, PageIndexT ppn);
 
     virtual uint64_t get_current_tick();
     virtual uint64_t get_current_utick(uint32_t cpu_id);
 
-    virtual void pxymem_page_zero(uint32_t cpu_id, vector<PageIndexT> &ppns);
 
     virtual void hfutex_setmask(uint32_t cpu_id, VirtAddrT vaddr);
     virtual void hfutex_clearmask(uint32_t cpu_id);
@@ -88,6 +67,10 @@ private:
     void _append_buf(BufT &buf, void * data, uint64_t bytes);
 
     uint64_t _pop_int(BufT &buf, uint64_t bytes);
+
+    void _send_frame(HTPFrame &frame);
+    void _recv_frame(HTPFrame &frame);
+    void _perform_pgrdwt_frame(HTPFrame &frame);
 
     bool always_flush_all = false;
 

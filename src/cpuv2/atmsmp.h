@@ -21,6 +21,8 @@ public:
     AtomicSMPCores(uint32_t core_num, PhysAddrT mem_base, uint64_t mem_size);
     ~AtomicSMPCores();
 
+    virtual void process_frames(HTPFrames &frames);
+
     virtual void halt(uint32_t cpu_id);
     virtual void interrupt(uint32_t cpu_id);
     virtual void set_mmu(uint32_t cpu_id, PhysAddrT pgtable, AsidT asid);
@@ -42,9 +44,8 @@ public:
     virtual void pxymem_page_set(uint32_t cpu_id, PageIndexT ppn, RawDataT value);
     virtual void pxymem_page_write(uint32_t cpu_id, PageIndexT ppn, void * buf);
     virtual void pxymem_page_copy(uint32_t cpu_id, PageIndexT dst, PageIndexT src);
-
-    virtual void pxymem_page_zero(uint32_t cpu_id, vector<PageIndexT> &ppns) {
-        for(auto &ppn : ppns) pxymem_page_set(cpu_id, ppn, 0);
+    virtual void pxymem_page_zero(uint32_t cpu_id, PageIndexT ppn) {
+        pxymem_page_set(cpu_id, ppn, 0);
     }
 
     virtual void hfutex_setmask(uint32_t cpu_id, VirtAddrT vaddr);

@@ -233,6 +233,83 @@ void AtomicSMPCores::hfutex_clearmask(uint32_t cpu_id) {
     LOG_RUNTIME("HFClr");
 }
 
+void AtomicSMPCores::process_frames(HTPFrames &frames) {
+    for(auto &f : frames) {
+        switch (f.opcode)
+        {
+        case HTOP::next :
+            if(!this->next(&f.cpuid, &f.x2, (uint32_t*)(&f.x1), &f.x3)) {
+                f.cpuid = 0xff;
+            }
+            break;
+        case HTOP::halt:
+            this->halt(f.cpuid);
+            break;
+        case HTOP::itr:
+            this->interrupt(f.cpuid);
+            break;
+        case HTOP::mmu:
+            this->set_mmu(f.cpuid, f.x2, f.x1);
+            break;
+        case HTOP::redir:
+            this->redirect(f.cpuid, f.x1);
+            break;
+        case HTOP::ftlb:
+            this->flush_tlb_all(f.cpuid);
+            break;
+        case HTOP::ftlb2:
+            this->flush_tlb_vpgidx(f.cpuid, f.x2, f.x1);
+            break;
+        case HTOP::synci:
+            this->sync_inst_stream(f.cpuid);
+            break;
+        case HTOP::regrd:
+            f.x2 = this->regacc_read(f.cpuid, f.x1);
+            break;
+        case HTOP::regwt:
+            this->regacc_write(f.cpuid, f.x1, f.x2);
+            break;
+        case HTOP::memrd:
+            f.x2 = this->pxymem_read(f.cpuid, f.x1);
+            break;
+        case HTOP::memwt:
+            this->pxymem_write(f.cpuid, f.x1, f.x2);
+            break;
+        case HTOP::pgrd:
+            f.d1.resize(PAGE_LEN_BYTE);
+            this->pxymem_page_read(f.cpuid, f.x1, f.d1.data());
+            break;
+        case HTOP::pgst:
+            this->pxymem_page_set(f.cpuid, f.x1, f.x2);
+            break;
+        case HTOP::pgwt:
+            this->pxymem_page_write(f.cpuid, f.x1, f.d1.data());
+            break;
+        case HTOP::pgcp:
+            this->pxymem_page_copy(f.cpuid, f.x1, f.x2);
+            break;
+        case HTOP::clk:
+            f.x1 = this->get_current_tick();
+            break;
+        case HTOP::uclk:
+            f.x1 = this->get_current_utick(f.cpuid);
+            break;
+        case HTOP::hfset:
+            this->hfutex_setmask(f.cpuid, f.x1);
+            break;
+        case HTOP::hfclr:
+            this->hfutex_clearmask(f.cpuid);
+            break;
+        case HTOP::pgzero:
+            this->pxymem_page_zero(f.cpuid, f.x1);
+            break;
+        default:
+            simroot_assert(0);
+            break;
+        }
+    }
+}
+
 bool AtomicSMPCores::_page_trans_and_check(uint32_t id, VirtAddrT vaddr, uint32_t flag, PhysAddrT *paddr) {
     CoreState &core = cores[id];
     auto &tlb = core.tlb;

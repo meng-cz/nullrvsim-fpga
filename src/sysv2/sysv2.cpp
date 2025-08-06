@@ -315,46 +315,60 @@ bool SMPSystemV2::_memcpy_to_target(uint32_t cpu_id, VirtAddrT tgt_dst, void * s
     VPageIndexT vpn = 0;
     PageIndexT ppn = 0;
 
-    auto check_vaddr_prot = [&](VirtAddrT va) -> bool {
-        if(vpn != (va >> PAGE_ADDR_OFFSET)) {
-            vpn = (va >> PAGE_ADDR_OFFSET);
-            return _check_vaddr_valid(cpu_id, curt, vpn, &ppn);
-        }
-        return true;
-    };
+    uint8_t * send_buf = (uint8_t *)src;
+    VirtAddrT send_vaddr = tgt_dst;
+    uint64_t send_size = size;
+    vector<uint64_t> _hostbuf;
 
-    const uint64_t align = 8;
-    uint64_t bytes = 0;
-    
-    VirtAddrT start = (tgt_dst & (~(align - 1)));
-    if(start < tgt_dst) {
-        if(!check_vaddr_prot(start)) return false;
-        PhysAddrT pa = (start & (PAGE_LEN_BYTE - 1)) + (ppn << PAGE_ADDR_OFFSET);
-        uint64_t off = tgt_dst - start;
-        uint64_t end = std::min<uint64_t>(align, size + off);
-        RawDataT v = cpus->pxymem_read(cpu_id, pa);
-        uint8_t *p2 = (uint8_t*)(&v);
-        uint8_t *p1 = (uint8_t*)(src);
-        for(uint64_t i = off; i < end; i++) {
-            p2[i] = p1[i - off];
+    if((tgt_dst & 7) || ((tgt_dst + size) & 7)) {
+        _hostbuf.resize(CEIL_DIV(tgt_dst+size, 8) - (tgt_dst / 8));
+        send_buf = (uint8_t *)(_hostbuf.data());
+        send_vaddr = (tgt_dst & (~7UL));
+        send_size = _hostbuf.size() * 8;
+        if(tgt_dst & 7) {
+            vpn = (send_vaddr >> PAGE_ADDR_OFFSET);
+            if(!_check_vaddr_valid(cpu_id, curt, vpn, &ppn)) {
+                return false;
+            }
+            _hostbuf[0] = cpus->pxymem_read(cpu_id, (ppn << PAGE_ADDR_OFFSET) | (send_vaddr & (PAGE_LEN_BYTE-1)));
         }
-        cpus->pxymem_write(cpu_id, pa, v);
-        bytes += (end - off);
+        if(((tgt_dst + size) & 7)) {
+            VirtAddrT _tmpaddr = ((tgt_dst + size) & (~7UL));
+            vpn = (_tmpaddr >> PAGE_ADDR_OFFSET);
+            if(!_check_vaddr_valid(cpu_id, curt, vpn, &ppn)) {
+                return false;
+            }
+            _hostbuf[_hostbuf.size()-1] = cpus->pxymem_read(cpu_id, (ppn << PAGE_ADDR_OFFSET) | (_tmpaddr & (PAGE_LEN_BYTE-1)));
+        }
+        uint64_t _offset = (tgt_dst & 7);
+        memcpy((uint8_t*)(_hostbuf.data()) + _offset, src, size);
     }
 
-    while(bytes < size) {
-        uint64_t sz = std::min<uint64_t>(align, size - bytes);
-        VirtAddrT va = tgt_dst + bytes;
-        if(!check_vaddr_prot(va)) return false;
-        PhysAddrT pa = (va & (PAGE_LEN_BYTE - 1)) + (ppn << PAGE_ADDR_OFFSET);
-        RawDataT v = 0;
-        if(sz < align) {
-            v = cpus->pxymem_read(cpu_id, pa);
+    HTPFrames frames;
+    for(uint64_t pos = send_vaddr; pos < send_vaddr + send_size; ) {
+        vpn = (pos >> PAGE_ADDR_OFFSET);
+        if(!_check_vaddr_valid(cpu_id, curt, vpn, &ppn)) {
+            return false;
         }
-        memcpy(&v, (char*)src + bytes, sz);
-        cpus->pxymem_write(cpu_id, pa, v);
-        bytes += sz;
+        if(!(pos & (PAGE_LEN_BYTE - 1)) && pos + PAGE_LEN_BYTE <= send_vaddr + send_size) {
+            // entire page
+            htp_push_pxymem_page_write(frames, cpu_id, ppn, send_buf + (pos - send_vaddr));
+            pos += PAGE_LEN_BYTE;
+            continue;
+        } else {
+            uint64_t sz = std::min<uint64_t>(send_vaddr + send_size - pos, ALIGN(pos + 1, PAGE_LEN_BYTE) - pos);
+            PhysAddrT ppos = (ppn << PAGE_ADDR_OFFSET) + (pos & (PAGE_LEN_BYTE-1));
+            vector<uint64_t> datas;
+            datas.resize(sz/8);
+            memcpy(datas.data(), send_buf + (pos - send_vaddr), sz);
+            for(uint64_t i = 0; i < sz; i += 8) {
+                htp_push_pxymem_write(frames, cpu_id, ppos + i, datas[i/8]);
+            }
+            pos += sz;
+            continue;
+        }
     }
+    cpus->process_frames(frames);
 
     return true;
 }
@@ -365,36 +379,63 @@ bool SMPSystemV2::_memcpy_from_target(uint32_t cpu_id, void * dst, VirtAddrT tgt
     VPageIndexT vpn = 0;
     PageIndexT ppn = 0;
 
-    auto check_vaddr_prot = [&](VirtAddrT va) -> bool {
-        if(vpn != (va >> PAGE_ADDR_OFFSET)) {
-            vpn = (va >> PAGE_ADDR_OFFSET);
-            return _check_vaddr_valid(cpu_id, curt, vpn, &ppn);
-        }
-        return true;
-    };
-
-    const uint64_t align = 8;
-    uint64_t bytes = 0;
-
-    VirtAddrT start = (tgt_src & (~(align - 1)));
-    if(start < tgt_src) {
-        if(!check_vaddr_prot(start)) return false;
-        PhysAddrT pa = (start & (PAGE_LEN_BYTE - 1)) + (ppn << PAGE_ADDR_OFFSET);
-        uint64_t off = tgt_src - start;
-        uint64_t end = std::min<uint64_t>(align, size + off);
-        RawDataT v = (cpus->pxymem_read(cpu_id, pa) >> (off * 8));
-        memcpy(dst, &v, end - off);
-        bytes += (end - off);
+    uint8_t * recv_buf = (uint8_t *)dst;
+    VirtAddrT recv_vaddr = tgt_src;
+    uint64_t recv_size = size;
+    vector<uint64_t> _hostbuf;
+    
+    if((tgt_src & 7) || ((tgt_src + size) & 7)) {
+        _hostbuf.resize(CEIL_DIV(tgt_src+size, 8) - (tgt_src / 8));
+        recv_buf = (uint8_t *)(_hostbuf.data());
+        recv_vaddr = (tgt_src & (~7UL));
+        recv_size = ALIGN(tgt_src + size, 8) - recv_vaddr;
     }
 
-    while(bytes < size) {
-        uint64_t sz = std::min<uint64_t>(align, size - bytes);
-        VirtAddrT va = tgt_src + bytes;
-        if(!check_vaddr_prot(va)) return false;
-        PhysAddrT pa = (va & (PAGE_LEN_BYTE - 1)) + (ppn << PAGE_ADDR_OFFSET);
-        RawDataT v = cpus->pxymem_read(cpu_id, pa);
-        memcpy((char*)dst + bytes, &v, sz);
-        bytes += sz;
+    HTPFrames frames;
+    for(uint64_t pos = recv_vaddr; pos < recv_vaddr + recv_size; ) {
+        vpn = (pos >> PAGE_ADDR_OFFSET);
+        if(!_check_vaddr_valid(cpu_id, curt, vpn, &ppn)) {
+            return false;
+        }
+        if(!(pos & (PAGE_LEN_BYTE - 1)) && pos + PAGE_LEN_BYTE <= recv_vaddr + recv_size) {
+            // entire page
+            htp_push_pxymem_page_read(frames, cpu_id, ppn);
+            pos += PAGE_LEN_BYTE;
+            continue;
+        } else {
+            uint64_t sz = std::min<uint64_t>(recv_vaddr + recv_size - pos, ALIGN(pos + 1, PAGE_LEN_BYTE) - pos);
+            PhysAddrT ppos = (ppn << PAGE_ADDR_OFFSET) + (pos & (PAGE_LEN_BYTE-1));
+            for(uint64_t i = 0; i < sz; i += 8) {
+                htp_push_pxymem_read(frames, cpu_id, ppos + i);
+            }
+            pos += sz;
+            continue;
+        }
+    }
+    cpus->process_frames(frames);
+
+    for(uint64_t pos = recv_vaddr; pos < recv_vaddr + recv_size; ) {
+        if(!(pos & (PAGE_LEN_BYTE - 1)) && pos + PAGE_LEN_BYTE <= recv_vaddr + recv_size) {
+            // entire page
+            htp_pop_page_read(frames, recv_buf + (pos - recv_vaddr));
+            pos += PAGE_LEN_BYTE;
+            continue;
+        } else {
+            uint64_t sz = std::min<uint64_t>(recv_vaddr + recv_size - pos, ALIGN(pos + 1, PAGE_LEN_BYTE) - pos);
+            vector<uint64_t> datas;
+            datas.resize(sz/8);
+            for(uint64_t i = 0; i < sz; i += 8) {
+                htp_pop_pxymem_read(frames, &datas[i/8]);
+            }
+            memcpy(recv_buf + (pos - recv_vaddr), datas.data(), sz);
+            pos += sz;
+            continue;
+        }
+    }
+
+    if(_hostbuf.size()) {
+        uint64_t _offset = (tgt_src & 7);
+        memcpy(dst, (uint8_t*)(_hostbuf.data()) + _offset, size);
     }
 
     return true;
@@ -443,31 +484,45 @@ bool SMPSystemV2::_strcpy_from_target(uint32_t cpu_id, char * dst, VirtAddrT tgt
     }
 }
 
-void SMPSystemV2::_perform_target_memsets(uint32_t cpu_id, TgtMemSetList &stlist) {
-    if(!enable_pgzero) {
-        for(auto &st : stlist) {
-            _perform_target_memset(cpu_id, st);
-        }
-        return;
-    }
-    TgtMemSetList non_zero;
-    vector<PageIndexT> zero_filled_pages;
+void SMPSystemV2::target_memops_to_htp_frame(HTPFrames &frames, uint32_t cpu_id, TgtMemSetList &stlist) {
     for(auto &st : stlist) {
-        if(st.dwords == PAGE_LEN_BYTE/8 && !(st.base & (PAGE_LEN_BYTE - 1)) && st.value == 0 && st.multivalue.empty()) {
-            zero_filled_pages.push_back(st.base >> PAGE_ADDR_OFFSET);
-            st._skip = true;
+        _target_memset_to_htp_frame(frames, cpu_id, st);
+    }
+}
+void SMPSystemV2::target_memops_to_htp_frame(HTPFrames &frames, uint32_t cpu_id, vector<TgtPgCpy> &cplist) {
+    for(auto &cp : cplist) {
+        _target_memcp_to_htp_frame(frames, cpu_id, cp);
+    }
+}
+void SMPSystemV2::target_memops_to_htp_frame(HTPFrames &frames, uint32_t cpu_id, TgtMemSetList &stlist, vector<TgtPgCpy> &cplist) {
+    for(auto &st : stlist) {
+        _target_memset_to_htp_frame(frames, cpu_id, st);
+    }
+    for(auto &cp : cplist) {
+        _target_memcp_to_htp_frame(frames, cpu_id, cp);
+    }
+}
+
+void SMPSystemV2::_target_memset_to_htp_frame(HTPFrames &frames, uint32_t cpu_id, TgtMemSet64 &st) {
+    if(st.dwords == PAGE_LEN_BYTE/8 && !(st.base & (PAGE_LEN_BYTE - 1))) {
+        if(st.multivalue.size() == st.dwords) {
+            htp_push_pxymem_page_write(frames, cpu_id, st.base >> PAGE_ADDR_OFFSET, st.multivalue.data());
         } else {
-            st._skip = false;
+            simroot_assert(st.multivalue.empty());
+            if(st.value) {
+                htp_push_pxymem_page_set(frames, cpu_id, st.base >> PAGE_ADDR_OFFSET, st.value);
+            } else {
+                htp_push_pxymem_page_zero(frames, cpu_id, st.base >> PAGE_ADDR_OFFSET);
+            }
         }
+    } else {
+        simroot_assertf((st.dwords == 1) && !(st.base & 7), "Bad target memset on 0x%lx with length %ld dwords", st.base, st.dwords);
+        htp_push_pxymem_write(frames, cpu_id, st.base, st.value);
     }
-    if(zero_filled_pages.size()) {
-        cpus->pxymem_page_zero(cpu_id, zero_filled_pages);
-    }
-    for(auto &st : stlist) {
-        if(!st._skip) {
-            _perform_target_memset(cpu_id, st);
-        }
-    }
+}
+
+void SMPSystemV2::_target_memcp_to_htp_frame(HTPFrames &frames, uint32_t cpu_id, TgtPgCpy &cp) {
+    htp_push_pxymem_page_copy(frames, cpu_id, cp.dst, cp.src);
 }
 
 void SMPSystemV2::_perform_target_memset(uint32_t cpu_id, TgtMemSet64 &st) {
@@ -489,12 +544,6 @@ void SMPSystemV2::_perform_target_memset(uint32_t cpu_id, TgtMemSet64 &st) {
         //     }
         // }
         cpus->pxymem_write(cpu_id, st.base, st.value);
-    }
-}
-
-void SMPSystemV2::_perform_target_pagecpys(uint32_t cpu_id, vector<TgtPgCpy> &cplist) {
-    for(auto &cp : cplist) {
-        _perform_target_pagecpy(cpu_id, cp);
     }
 }
 
@@ -852,12 +901,14 @@ void SMPSystemV2::run_sim() {
     uint32_t cause = 0;
     RawDataT arg = 0;
     VirtAddrT pc = 0;
+    bool not_all_halt = cpus->next(&cpu_id, &pc, &cause, &arg);
 
-#define SYSCALL_CASE_V2(num, name) case num: nextpc = SYSCALL_FUNC_NAME_V2(num, name)(cpu_id, pc); break;
+#define SYSCALL_CASE_V2(num, name) case num: nextpc = SYSCALL_FUNC_NAME_V2(num, name)(cpu_id, pc, frames); break;
 
-    while(cpus->next(&cpu_id, &pc, &cause, &arg)) {
+    while(not_all_halt) {
         RawDataT ecallid = arg;
         VirtAddrT nextpc = 0;
+        HTPFrames frames;
         switch (cause)
         {
         case ITR_USR_ECALL:
@@ -925,13 +976,13 @@ void SMPSystemV2::run_sim() {
             }
             break;
         case ITR_INST_PGFAULT:
-            nextpc = _page_fault_rx(cpu_id, pc, arg, true);
+            nextpc = _page_fault_rx(frames, cpu_id, pc, arg, true);
             break;
         case ITR_LD_PGFAULT:
-            nextpc = _page_fault_rx(cpu_id, pc, arg, false);
+            nextpc = _page_fault_rx(frames, cpu_id, pc, arg, false);
             break;
         case ITR_ST_PGFAULT:
-            nextpc = _page_fault_w(cpu_id, pc, arg);
+            nextpc = _page_fault_w(frames, cpu_id, pc, arg);
             break;
         default:
             printf("CPU%d Raise an Unexpected Exception %d @0x%lx, arg:0x%lx\n", cpu_id, cause, pc, arg);
@@ -939,10 +990,14 @@ void SMPSystemV2::run_sim() {
         }
 
         if(nextpc) {
-            cpus->redirect(cpu_id, nextpc);
+            htp_push_redirect(frames, cpu_id, nextpc);
         } else {
-            cpus->halt(cpu_id);
+            htp_push_halt(frames, cpu_id);
         }
+        htp_push_next(frames);
+        cpus->process_frames(frames);
+        htp_pop_next(frames, &cpu_id, &pc, &cause, &arg);
+        not_all_halt = (cpu_id <= 127);
     }
 
     uint64_t end_tick = cpus->get_current_tick();
@@ -2638,7 +2693,7 @@ SYSCALL_DEFINE_V2(435, clone3) {
     ECALL_RET(ret, pc+4);
 }
 
-VirtAddrT SMPSystemV2::_page_fault_rx(uint32_t cpu_id, VirtAddrT pc, VirtAddrT badaddr, bool isx) {
+VirtAddrT SMPSystemV2::_page_fault_rx(HTPFrames &frames, uint32_t cpu_id, VirtAddrT pc, VirtAddrT badaddr, bool isx) {
     VPageIndexT vpn = (badaddr >> PAGE_ADDR_OFFSET);
 
     PTET pte = CURT->pgtable->pt_get(vpn, nullptr);
@@ -2647,13 +2702,12 @@ VirtAddrT SMPSystemV2::_page_fault_rx(uint32_t cpu_id, VirtAddrT pc, VirtAddrT b
     vector<VPageIndexT> needflush;
 
     if(!(pte & PTE_V) && CURT->pgtable->apply_cow_nonalloc(vpn << PAGE_ADDR_OFFSET, &stlist, &cplist, &needflush)) {
-        _perform_target_memsets(cpu_id, stlist);
-        _perform_target_pagecpys(cpu_id, cplist);
+        target_memops_to_htp_frame(frames, cpu_id, stlist, cplist);
         if(isx) {
-            cpus->flush_tlb_all(cpu_id);
+            htp_push_flush_tlb_all(frames, cpu_id);
         } else {
             for(auto fls : needflush) {
-                cpus->flush_tlb_vpgidx(cpu_id, fls << PAGE_ADDR_OFFSET, using_asid?(CURT->asid):0);
+                htp_push_flush_tlb_vpgidx(frames, cpu_id, fls << PAGE_ADDR_OFFSET, using_asid?(CURT->asid):0);
             }
         }
         if(log_pgfault) { LOG_SYSCALL_2("page_fault_rx_alloc", "0x%lx", pc, "0x%lx", badaddr, "%d", 0); }
@@ -2661,13 +2715,12 @@ VirtAddrT SMPSystemV2::_page_fault_rx(uint32_t cpu_id, VirtAddrT pc, VirtAddrT b
     }
     else if((pte & PTE_V) && (pte & PTE_COW) && (pte & PTE_NALLOC)) {
         CURT->pgtable->apply_cow(vpn << PAGE_ADDR_OFFSET, &stlist, &cplist, &needflush);
-        _perform_target_memsets(cpu_id, stlist);
-        _perform_target_pagecpys(cpu_id, cplist);
+        target_memops_to_htp_frame(frames, cpu_id, stlist, cplist);
         if(isx) {
-            cpus->flush_tlb_all(cpu_id);
+            htp_push_flush_tlb_all(frames, cpu_id);
         } else {
             for(auto fls : needflush) {
-                cpus->flush_tlb_vpgidx(cpu_id, fls << PAGE_ADDR_OFFSET, using_asid?(CURT->asid):0);
+                htp_push_flush_tlb_vpgidx(frames, cpu_id, fls << PAGE_ADDR_OFFSET, using_asid?(CURT->asid):0);
             }
         }
         
@@ -2675,11 +2728,11 @@ VirtAddrT SMPSystemV2::_page_fault_rx(uint32_t cpu_id, VirtAddrT pc, VirtAddrT b
         return pc;
     } else if(pte & PTE_V) {
         if(isx && (pte & PTE_X)) {
-            cpus->flush_tlb_all(cpu_id);
+            htp_push_flush_tlb_all(frames, cpu_id);
             return pc;
         }
         if(!isx && (pte & PTE_R)) {
-            cpus->flush_tlb_vpgidx(cpu_id, vpn << PAGE_ADDR_OFFSET, using_asid?(CURT->asid):0);
+            htp_push_flush_tlb_vpgidx(frames, cpu_id, vpn << PAGE_ADDR_OFFSET, using_asid?(CURT->asid):0);
             return pc;
         }
     }
@@ -2689,7 +2742,7 @@ VirtAddrT SMPSystemV2::_page_fault_rx(uint32_t cpu_id, VirtAddrT pc, VirtAddrT b
     return 0;
 }
 
-VirtAddrT SMPSystemV2::_page_fault_w(uint32_t cpu_id, VirtAddrT pc, VirtAddrT badaddr) {
+VirtAddrT SMPSystemV2::_page_fault_w(HTPFrames &frames, uint32_t cpu_id, VirtAddrT pc, VirtAddrT badaddr) {
     VPageIndexT vpn = (badaddr >> PAGE_ADDR_OFFSET);
 
     PTET pte = CURT->pgtable->pt_get(vpn, nullptr);
@@ -2698,25 +2751,23 @@ VirtAddrT SMPSystemV2::_page_fault_w(uint32_t cpu_id, VirtAddrT pc, VirtAddrT ba
     vector<VPageIndexT> needflush;
 
     if(!(pte & PTE_V) && CURT->pgtable->apply_cow_nonalloc(vpn << PAGE_ADDR_OFFSET, &stlist, &cplist, &needflush)) {
-        _perform_target_memsets(cpu_id, stlist);
-        _perform_target_pagecpys(cpu_id, cplist);
+        target_memops_to_htp_frame(frames, cpu_id, stlist, cplist);
         for(auto fls : needflush) {
-            cpus->flush_tlb_vpgidx(cpu_id, fls << PAGE_ADDR_OFFSET, using_asid?(CURT->asid):0);
+            htp_push_flush_tlb_vpgidx(frames, cpu_id, fls << PAGE_ADDR_OFFSET, using_asid?(CURT->asid):0);
         }
         if(log_pgfault) { LOG_SYSCALL_2("page_fault_w_alloc", "0x%lx", pc, "0x%lx", badaddr, "%d", 0); }
         return pc;
     }
     else if((pte & PTE_V) && (pte & PTE_COW)) {
         CURT->pgtable->apply_cow(vpn << PAGE_ADDR_OFFSET, &stlist, &cplist, &needflush);
-        _perform_target_memsets(cpu_id, stlist);
-        _perform_target_pagecpys(cpu_id, cplist);
+        target_memops_to_htp_frame(frames, cpu_id, stlist, cplist);
         for(auto fls : needflush) {
-            cpus->flush_tlb_vpgidx(cpu_id, fls << PAGE_ADDR_OFFSET, using_asid?(CURT->asid):0);
+            htp_push_flush_tlb_vpgidx(frames, cpu_id, fls << PAGE_ADDR_OFFSET, using_asid?(CURT->asid):0);
         }
         if(log_pgfault) { LOG_SYSCALL_2("page_fault_w", "0x%lx", pc, "0x%lx", badaddr, "%d", 0); }
         return pc;
     } else if(pte & (PTE_V | PTE_W)) {
-        cpus->flush_tlb_vpgidx(cpu_id, vpn << PAGE_ADDR_OFFSET, using_asid?(CURT->asid):0);
+        htp_push_flush_tlb_vpgidx(frames, cpu_id, vpn << PAGE_ADDR_OFFSET, using_asid?(CURT->asid):0);
         return pc;
     }
 

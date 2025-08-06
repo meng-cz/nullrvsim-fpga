@@ -45,10 +45,17 @@ protected:
 
     void init_target_memory(TgtMemSetList &stlist);
 
-    void _perform_target_memsets(uint32_t cpu_id, TgtMemSetList &stlist);
     void _perform_target_memset(uint32_t cpu_id, TgtMemSet64 &st);
-    void _perform_target_pagecpys(uint32_t cpu_id, vector<TgtPgCpy> &cplist);
     void _perform_target_pagecpy(uint32_t cpu_id, TgtPgCpy &cp);
+
+    void _target_memset_to_htp_frame(HTPFrames &frames, uint32_t cpu_id, TgtMemSet64 &st);
+    void _target_memcp_to_htp_frame(HTPFrames &frames, uint32_t cpu_id, TgtPgCpy &cp);
+
+    void target_memops_to_htp_frame(HTPFrames &frames, uint32_t cpu_id, TgtMemSetList &stlist);
+    void target_memops_to_htp_frame(HTPFrames &frames, uint32_t cpu_id, vector<TgtPgCpy> &cplist);
+    void target_memops_to_htp_frame(HTPFrames &frames, uint32_t cpu_id, TgtMemSetList &stlist, vector<TgtPgCpy> &cplist);
+
+    
 
     VirtAddrT _pop_context_and_execute(uint32_t cpu_id);
     void _push_context_stack(uint32_t cpu_id, VirtAddrT nextpc);
@@ -261,8 +268,8 @@ protected:
 
 
 #define SYSCALL_FUNC_NAME_V2(num, name) syscall_##num##_##name
-#define SYSCALL_CLAIM_V2(num, name) VirtAddrT SYSCALL_FUNC_NAME_V2(num,name)(uint32_t cpu_id, VirtAddrT pc)
-#define SYSCALL_DEFINE_V2(num, name) VirtAddrT SMPSystemV2::SYSCALL_FUNC_NAME_V2(num,name)(uint32_t cpu_id, VirtAddrT pc)
+#define SYSCALL_CLAIM_V2(num, name) VirtAddrT SYSCALL_FUNC_NAME_V2(num,name)(uint32_t cpu_id, VirtAddrT pc, HTPFrames &frames)
+#define SYSCALL_DEFINE_V2(num, name) VirtAddrT SMPSystemV2::SYSCALL_FUNC_NAME_V2(num,name)(uint32_t cpu_id, VirtAddrT pc, HTPFrames &frames)
 
     SYSCALL_CLAIM_V2(17, getcwd);
     SYSCALL_CLAIM_V2(25, fcntl);
@@ -315,14 +322,12 @@ protected:
     SYSCALL_CLAIM_V2(435, clone3);
 
     
-    VirtAddrT _page_fault_rx(uint32_t cpu_id, VirtAddrT pc, VirtAddrT badaddr, bool isx);
-    VirtAddrT _page_fault_w(uint32_t cpu_id, VirtAddrT pc, VirtAddrT badaddr);
+    VirtAddrT _page_fault_rx(HTPFrames &frames, uint32_t cpu_id, VirtAddrT pc, VirtAddrT badaddr, bool isx);
+    VirtAddrT _page_fault_w(HTPFrames &frames, uint32_t cpu_id, VirtAddrT pc, VirtAddrT badaddr);
 
 
     bool log_syscall = true;
     bool log_pgfault = true;
-
-    bool enable_pgzero = false;
 };
 
 #endif

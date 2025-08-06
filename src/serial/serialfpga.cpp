@@ -130,28 +130,54 @@ uint64_t SerialFPGAAdapter::_pop_int(BufT &buf, uint64_t bytes) {
     return ret;
 }
 
-const uint64_t SEROP_RET_BITS[SEROP_NUM] = {
-    8+8+48+48,
-    0,
-    0,
-    0,
-    0,
-    0,
-    0,
-    0,
-    64,
-    0,
-    64,
-    0,
-    512*8,
-    0,
-    0,
-    0,
-    64,
-    64,
-    0,
-    0,
-    0
+const uint32_t MAX_SEND_BYTES = (512);
+const uint32_t MAX_RECV_BYTES = (512);
+
+const uint32_t SEROP_SEND_BITS[SEROP_NUM] = {
+    0,          // next
+    8,          // halt
+    8,          // itr
+    64,         // mmu
+    56,         // redir
+    8,          // ftlb
+    64,         // ftlb2
+    8,          // synci
+    24,         // regrd
+    88,         // regwt
+    56,         // memrd
+    8+48+64,    // memwt
+    48,         // pgrd-div8
+    8+40+64,    // pgst
+    48+512*8,   // pgwt-div8
+    88,         // pgcp
+    0,          // clk
+    8,          // uclk
+    56,         // hfset
+    8,          // hfclr
+    48          // pgzero
+};
+const uint32_t SEROP_RET_BITS[SEROP_NUM] = {
+    8+8+48+48,  // next
+    0,          // halt
+    0,          // itr
+    0,          // mmu
+    0,          // redir
+    0,          // ftlb
+    0,          // ftlb2
+    0,          // synci
+    64,         // regrd
+    0,          // regwt
+    64,         // memrd
+    0,          // memwt
+    512*8,      // pgrd-div8
+    0,          // pgst
+    0,          // pgwt-div8
+    0,          // pgcp
+    64,         // clk
+    64,         // uclk
+    0,          // hfset
+    0,          // hfclr
+    0           // pgzero
 };
 
 int8_t SerialFPGAAdapter::_perform_op(int8_t op, BufT &data, BufT &retdata) {
@@ -356,26 +382,13 @@ uint64_t SerialFPGAAdapter::get_current_utick(uint32_t cpu_id) {
     return rvalue;
 }
 
-void SerialFPGAAdapter::pxymem_page_zero(uint32_t cpu_id, vector<PageIndexT> &ppns) {
-
-    // for(uint64_t cnt = 0; cnt < ppns.size(); ) {
-    //     uint64_t do_cnt = std::min<uint64_t>(128, ppns.size() - cnt);
-
-    //     vector<uint8_t> buf, ret;
-    //     _append_int(buf, cpu_id, 1);
-    //     _append_int(buf, do_cnt, 1);
-    //     for(uint64_t i = 0; i < do_cnt; i++) {
-    //         _append_int(buf, ppns[cnt + i], 5);
-    //     }
-    //     int8_t value = _perform_op(SEROP_PGZERO, buf, ret);
-    //     simroot_assertf(SEROP_UCLK == value, "Operation PGZERO(%ld pgs) on Core %d Failed: %d", do_cnt, cpu_id, value);
-    //     for(uint64_t i = 0; i < do_cnt; i++) {
-    //         DEBUGOP("PGZERO (0x%lx)", ppns[cnt + i]);
-    //     }
-
-    //     cnt += do_cnt;
-    // }
-    assert(0);
+void SerialFPGAAdapter::pxymem_page_zero(uint32_t cpu_id, PageIndexT ppn) {
+    vector<uint8_t> buf, ret;
+    _append_int(buf, cpu_id, 1);
+    _append_int(buf, ppn, 5);
+    int8_t rvalue = _perform_op(SEROP_PGST, buf, ret);
+    simroot_assertf(SEROP_PGST == rvalue, "Operation PageZero on Core %d (0x%lx) Failed: %d", cpu_id, ppn, rvalue);
+    DEBUGOP("PageSet (0x%lx)", ppn);
 }
 
 void SerialFPGAAdapter::hfutex_setmask(uint32_t cpu_id, VirtAddrT vaddr) {
@@ -395,6 +408,182 @@ void SerialFPGAAdapter::hfutex_clearmask(uint32_t cpu_id) {
     DEBUGOP("HFCLR");
 }
 
+void SerialFPGAAdapter::process_frames(HTPFrames &frames) {
+    auto iter_send = frames.begin();
+    auto iter_recv = frames.begin();
+    uint32_t send_sum = 0;
+    uint32_t recv_sum = 0;
+    while(iter_send != frames.end()) {
+        if(iter_send->opcode == HTOP::pgrd || iter_send->opcode == HTOP::pgwt) {
+            while(iter_recv != iter_send) {
+                _recv_frame(*iter_recv);
+                iter_recv++;
+            }
+            send_sum = recv_sum = 0;
+            _perform_pgrdwt_frame(*iter_send);
+            iter_send++;
+            iter_recv++;
+            continue;
+        }
+        _send_frame(*iter_send);
+        send_sum += (SEROP_SEND_BITS[(uint32_t)(iter_send->opcode)]/8);
+        recv_sum += (SEROP_RET_BITS[(uint32_t)(iter_send->opcode)]/8);
+        iter_send++;
+        if(iter_send == frames.end() || send_sum > MAX_SEND_BYTES || recv_sum > MAX_RECV_BYTES) {
+            while(iter_recv != iter_send) {
+                _recv_frame(*iter_recv);
+                iter_recv++;
+            }
+            send_sum = recv_sum = 0;
+        }
+    }
+}
+
+void SerialFPGAAdapter::_send_frame(HTPFrame &frame) {
+    BufT buf;
+    buf.push_back((uint8_t)(frame.opcode));
+    switch (frame.opcode)
+    {
+    case HTOP::next:
+        break;
+    case HTOP::halt:
+        _append_int(buf, frame.cpuid, 1);
+        break;
+    case HTOP::itr:
+        _append_int(buf, frame.cpuid, 1);
+        break;
+    case HTOP::mmu:
+        _append_int(buf, frame.cpuid, 1);
+        _append_int(buf, frame.x1, 2);
+        _append_int(buf, frame.x2 >> PAGE_ADDR_OFFSET, 5);
+        break;
+    case HTOP::redir:
+        _append_int(buf, frame.cpuid, 1);
+        _append_int(buf, frame.x1, 6);
+        break;
+    case HTOP::ftlb:
+        _append_int(buf, frame.cpuid, 1);
+        break;
+    case HTOP::ftlb2:
+        _append_int(buf, frame.cpuid, 1);
+        _append_int(buf, frame.x1, 2);
+        _append_int(buf, frame.x2 >> PAGE_ADDR_OFFSET, 5);
+        break;
+    case HTOP::synci:
+        _append_int(buf, frame.cpuid, 1);
+        break;
+    case HTOP::regrd:
+        _append_int(buf, frame.cpuid, 1);
+        _append_int(buf, frame.x1, 2);
+        break;
+    case HTOP::regwt:
+        _append_int(buf, frame.cpuid, 1);
+        _append_int(buf, frame.x1, 2);
+        _append_int(buf, frame.x2, 8);
+        break;
+    case HTOP::memrd:
+        _append_int(buf, frame.cpuid, 1);
+        _append_int(buf, frame.x1, 6);
+        break;
+    case HTOP::memwt:
+        _append_int(buf, frame.cpuid, 1);
+        _append_int(buf, frame.x1, 6);
+        _append_int(buf, frame.x2, 8);
+        break;
+    case HTOP::pgst:
+        _append_int(buf, frame.cpuid, 1);
+        _append_int(buf, frame.x1, 5);
+        _append_int(buf, frame.x2, 8);
+        break;
+    case HTOP::pgcp:
+        _append_int(buf, frame.cpuid, 1);
+        _append_int(buf, frame.x1, 5);
+        _append_int(buf, frame.x2, 5);
+        break;
+    case HTOP::clk:
+        break;
+    case HTOP::uclk:
+        _append_int(buf, frame.cpuid, 1);
+        break;
+    case HTOP::hfset:
+        _append_int(buf, frame.cpuid, 1);
+        _append_int(buf, frame.x1, 6);
+        break;
+    case HTOP::hfclr:
+        _append_int(buf, frame.cpuid, 1);
+        break;
+    case HTOP::pgzero:
+        _append_int(buf, frame.cpuid, 1);
+        _append_int(buf, frame.x1, 5);
+        break;
+    default:
+        simroot_assert(0);
+        break;
+    }
+    _write_serial(buf.data(), buf.size());
+}
+
+void SerialFPGAAdapter::_recv_frame(HTPFrame &frame) {
+    BufT buf;
+    buf.assign(1 + (SEROP_RET_BITS[(uint32_t)(frame.opcode)]/8), 0);
+    _read_serial(buf.data(), buf.size());
+    uint8_t ret = _pop_int(buf, 1);
+    simroot_assert(ret == ((uint32_t)(frame.opcode)));
+    switch (frame.opcode)
+    {
+    case HTOP::next:
+        frame.cpuid = _pop_int(buf, 1);
+        frame.x1 = _pop_int(buf, 1);
+        frame.x2 = _pop_int(buf, 6);
+        frame.x3 = _pop_int(buf, 6);
+        break;
+    case HTOP::halt:
+    case HTOP::itr:
+    case HTOP::mmu:
+    case HTOP::redir:
+    case HTOP::ftlb:
+    case HTOP::ftlb2:
+    case HTOP::synci:
+        break;
+    case HTOP::regrd:
+        frame.x1 = _pop_int(buf, 8);
+        break;
+    case HTOP::regwt:
+        break;
+    case HTOP::memrd:
+        frame.x1 = _pop_int(buf, 8);
+        break;
+    case HTOP::memwt:
+    case HTOP::pgst:
+    case HTOP::pgcp:
+        break;
+    case HTOP::clk:
+        frame.x1 = _pop_int(buf, 8);
+        break;
+    case HTOP::uclk:
+        frame.x1 = _pop_int(buf, 8);
+        break;
+    case HTOP::hfset:
+    case HTOP::hfclr:
+    case HTOP::pgzero:
+        break;
+    default:
+        simroot_assert(0);
+        break;
+    }
+}
+
+void SerialFPGAAdapter::_perform_pgrdwt_frame(HTPFrame &frame) {
+    if(frame.opcode == HTOP::pgrd) {
+        frame.d1.resize(PAGE_LEN_BYTE);
+        this->pxymem_page_read(frame.cpuid, frame.x1, frame.d1.data());
+    } else if(frame.opcode == HTOP::pgwt) {
+        simroot_assert(frame.d1.size() >= PAGE_LEN_BYTE);
+        this->pxymem_page_write(frame.cpuid, frame.x1, frame.d1.data());
+    } else {
+        simroot_assert(0);
+    }
+}
 
 void SerialFPGAAdapter::dump_core(std::ofstream &ofile) {
     char logbuf[256];
