@@ -104,9 +104,10 @@ class NulCPUCtrlMP(cpunum: Int) extends Module {
 
     val STATE_RECV_HEAD     = 2.U
     val STATE_RECV_ARG      = 3.U
-    val STATE_SEND_HEAD     = 4.U 
-    val STATE_SEND_ARG      = 5.U 
-    val STATE_ERROR         = 6.U 
+    val STATE_DO_OP         = 4.U
+    val STATE_SEND_HEAD     = 5.U 
+    val STATE_SEND_ARG      = 6.U 
+    val STATE_ERROR         = 7.U 
 
     val STATE_WAIT_NEXT     = 8.U 
     val STATE_NEXT          = 9.U 
@@ -157,46 +158,57 @@ class NulCPUCtrlMP(cpunum: Int) extends Module {
     
     when(state === STATE_RECV_HEAD) {
         io.rx.ready := true.B
-    }
-    when(state === STATE_RECV_HEAD && io.rx.valid) {
-        val rxop = io.rx.bits(4, 0)
-        val rxoff = io.rx.bits(7, 5)
-        opcode := rxop
-        opoff := rxoff
+        when(io.rx.valid) {
+            val rxop = io.rx.bits(4, 0)
+            val rxoff = io.rx.bits(7, 5)
+            opcode := rxop
+            opoff := rxoff
+            trans_pos := 1.U
+            state := STATE_RECV_ARG
 
-        trans_pos := 1.U
-        state := STATE_RECV_ARG
-
-        when(rxop === SEROP_HALT || rxop === SEROP_ITR || rxop === SEROP_FTLB || rxop === SEROP_SYNCI || rxop === SEROP_UCLK || rxop === SEROP_HFCLR) {
-            trans_bytes := 2.U 
-        }.elsewhen(rxop === SEROP_REGRD) {
-            trans_bytes := 4.U 
-        }.elsewhen(rxop === SEROP_INST) {
-            trans_bytes := 6.U 
-        }.elsewhen(rxop === SEROP_PGRD || rxop === SEROP_PGWT || rxop === SEROP_PGZERO) {
-            trans_bytes := 7.U 
-        }.elsewhen(rxop === SEROP_REDIR || rxop === SEROP_MEMRD || rxop === SEROP_HFSET) {
-            trans_bytes := 8.U 
-        }.elsewhen(rxop === SEROP_MMU || rxop === SEROP_FTLB2) {
-            trans_bytes := 9.U 
-        }.elsewhen(rxop === SEROP_REGWT || rxop === SEROP_PGCP) {
-            trans_bytes := 12.U 
-        }.elsewhen(rxop === SEROP_PGST) {
-            trans_bytes := 15.U 
-        }.elsewhen(rxop === SEROP_MEMWT) {
-            trans_bytes := 16.U 
-        }.elsewhen(rxop === SEROP_NEXT || rxop === SEROP_CLK) {
-            trans_bytes := 1.U 
-        } .otherwise {
-            state := STATE_ERROR
-            errno := rxop
+            when(rxop === SEROP_HALT || rxop === SEROP_ITR || rxop === SEROP_FTLB || rxop === SEROP_SYNCI || rxop === SEROP_UCLK || rxop === SEROP_HFCLR) {
+                trans_bytes := 2.U 
+            }.elsewhen(rxop === SEROP_REGRD) {
+                trans_bytes := 4.U 
+            }.elsewhen(rxop === SEROP_INST) {
+                trans_bytes := 6.U 
+            }.elsewhen(rxop === SEROP_PGRD || rxop === SEROP_PGWT || rxop === SEROP_PGZERO) {
+                trans_bytes := 7.U 
+            }.elsewhen(rxop === SEROP_REDIR || rxop === SEROP_MEMRD || rxop === SEROP_HFSET) {
+                trans_bytes := 8.U 
+            }.elsewhen(rxop === SEROP_MMU || rxop === SEROP_FTLB2) {
+                trans_bytes := 9.U 
+            }.elsewhen(rxop === SEROP_REGWT || rxop === SEROP_PGCP) {
+                trans_bytes := 12.U 
+            }.elsewhen(rxop === SEROP_PGST) {
+                trans_bytes := 15.U 
+            }.elsewhen(rxop === SEROP_MEMWT) {
+                trans_bytes := 16.U 
+            }.elsewhen(rxop === SEROP_NEXT || rxop === SEROP_CLK) {
+                state := STATE_DO_OP
+                trans_bytes := 1.U 
+            } .otherwise {
+                state := STATE_ERROR
+                errno := rxop
+            }
         }
     }
 
-    when(state === STATE_RECV_ARG && trans_bytes =/= trans_pos) {
+    when(state === STATE_RECV_ARG) {
         io.rx.ready := true.B
+        when(io.rx.valid) {
+            oparg(trans_pos) := io.rx.bits
+            when(trans_pos + 1.U === trans_bytes) {
+                trans_pos := 0.U
+                trans_bytes := 0.U 
+                state := STATE_DO_OP
+            }.otherwise {
+                trans_pos := trans_pos + 1.U
+            }
+        }
     }
-    when(state === STATE_RECV_ARG && trans_bytes === trans_pos) {
+
+    when(state === STATE_DO_OP) {
         trans_bytes := 1.U
         trans_pos := 1.U
         state := STATE_SEND_HEAD
