@@ -414,38 +414,48 @@ void SerialFPGAAdapter::hfutex_clearmask(uint32_t cpu_id) {
 
 void SerialFPGAAdapter::process_frames(HTPFrames &frames) {
     auto iter_send = frames.begin();
-    auto iter_recv = frames.begin();
     uint32_t send_sum = 0;
     uint32_t recv_sum = 0;
+    vector<HTPFrame*> todo_frames;
     while(iter_send != frames.end()) {
         if(iter_send->opcode == HTOP::pgrd || iter_send->opcode == HTOP::pgwt) {
-            while(iter_recv != iter_send) {
-                _recv_frame(*iter_recv);
-                iter_recv++;
+            if(todo_frames.size()) {
+                _perform_frames(todo_frames, send_sum, recv_sum);
             }
             send_sum = recv_sum = 0;
+            todo_frames.clear();
             _perform_pgrdwt_frame(*iter_send);
             iter_send++;
-            iter_recv++;
             continue;
         }
-        _send_frame(*iter_send);
         send_sum += (SEROP_SEND_BITS[(uint32_t)(iter_send->opcode)]/8);
         recv_sum += (SEROP_RET_BITS[(uint32_t)(iter_send->opcode)]/8);
+        todo_frames.push_back(&(*iter_send));
         iter_send++;
         if(iter_send == frames.end() || send_sum > MAX_SEND_BYTES || recv_sum > MAX_RECV_BYTES) {
-            while(iter_recv != iter_send) {
-                _recv_frame(*iter_recv);
-                iter_recv++;
-            }
+            _perform_frames(todo_frames, send_sum, recv_sum);
             send_sum = recv_sum = 0;
+            todo_frames.clear();
         }
     }
 }
 
-void SerialFPGAAdapter::_send_frame(HTPFrame &frame) {
+void SerialFPGAAdapter::_perform_frames(vector<HTPFrame*> &frames, uint32_t send_sum, uint32_t recv_sum) {
+    BufT sendbuf, recvbuf;
+    sendbuf.reserve(send_sum);
+    recvbuf.assign(recv_sum, 0);
+    for(auto p : frames) {
+        _send_frame(sendbuf, *p);
+    }
+    _write_serial(sendbuf.data(), sendbuf.size());
+    _read_serial(recvbuf.data(), recvbuf.size());
+    for(auto p : frames) {
+        _recv_frame(recvbuf, *p);
+    }
+}
+
+void SerialFPGAAdapter::_send_frame(BufT &buf, HTPFrame &frame) {
     uint32_t cpu_id = frame.cpuid;
-    BufT buf;
     buf.push_back((uint8_t)(frame.opcode));
     switch (frame.opcode)
     {
@@ -544,14 +554,10 @@ void SerialFPGAAdapter::_send_frame(HTPFrame &frame) {
         simroot_assert(0);
         break;
     }
-    _write_serial(buf.data(), buf.size());
 }
 
-void SerialFPGAAdapter::_recv_frame(HTPFrame &frame) {
+void SerialFPGAAdapter::_recv_frame(BufT &buf, HTPFrame &frame) {
     uint32_t cpu_id = frame.cpuid;
-    BufT buf;
-    buf.assign(1 + (SEROP_RET_BITS[(uint32_t)(frame.opcode)]/8), 0);
-    _read_serial(buf.data(), buf.size());
     uint8_t ret = _pop_int(buf, 1);
     simroot_assertf(ret == ((uint32_t)(frame.opcode)), "Failed OP %d: errno %d", ((uint32_t)(frame.opcode)), ret);
     switch (frame.opcode)

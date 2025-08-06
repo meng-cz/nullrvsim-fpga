@@ -68,8 +68,9 @@ private:
 
     uint64_t _pop_int(BufT &buf, uint64_t bytes);
 
-    void _send_frame(HTPFrame &frame);
-    void _recv_frame(HTPFrame &frame);
+    void _send_frame(BufT &buf, HTPFrame &frame);
+    void _recv_frame(BufT &buf, HTPFrame &frame);
+    void _perform_frames(vector<HTPFrame*> &frames, uint32_t send_sum, uint32_t recv_sum);
     void _perform_pgrdwt_frame(HTPFrame &frame);
 
     bool dumping_no_error = false;
