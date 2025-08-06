@@ -428,8 +428,8 @@ void SerialFPGAAdapter::process_frames(HTPFrames &frames) {
             iter_send++;
             continue;
         }
-        send_sum += (SEROP_SEND_BITS[(uint32_t)(iter_send->opcode)]/8);
-        recv_sum += (SEROP_RET_BITS[(uint32_t)(iter_send->opcode)]/8);
+        send_sum += ((SEROP_SEND_BITS[(uint32_t)(iter_send->opcode)]/8) + 1);
+        recv_sum += ((SEROP_RET_BITS[(uint32_t)(iter_send->opcode)]/8) + 1);
         todo_frames.push_back(&(*iter_send));
         iter_send++;
         if(iter_send == frames.end() || send_sum > MAX_SEND_BYTES || recv_sum > MAX_RECV_BYTES) {
