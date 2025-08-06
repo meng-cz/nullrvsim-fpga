@@ -72,6 +72,8 @@ private:
     void _recv_frame(HTPFrame &frame);
     void _perform_pgrdwt_frame(HTPFrame &frame);
 
+    bool dumping_no_error = false;
+
     bool always_flush_all = false;
 
     int32_t dbg = 0;

@@ -278,7 +278,11 @@ RawDataT SerialFPGAAdapter::regacc_read(uint32_t cpu_id, RVRegIndexT vreg) {
     _append_int(buf, cpu_id, 1);
     _append_int(buf, vreg, 2);
     int8_t value = _perform_op(SEROP_REGRD, buf, ret);
-    simroot_assertf(SEROP_REGRD == value, "Operation RegRead on Core %d (%d) Failed: %d", cpu_id, vreg, value);
+    if(dumping_no_error) {
+        if(SEROP_REGRD != value) return (-1L);
+    } else {
+        simroot_assertf(SEROP_REGRD == value, "Operation RegRead on Core %d (%d) Failed: %d", cpu_id, vreg, value);
+    }
     uint64_t rvalue = _pop_int(ret, 8);
     DEBUGOP("RegRead (%d) -> 0x%lx", vreg, rvalue);
     return rvalue;
@@ -613,6 +617,8 @@ void SerialFPGAAdapter::_perform_pgrdwt_frame(HTPFrame &frame) {
 
 void SerialFPGAAdapter::dump_core(std::ofstream &ofile) {
     char logbuf[256];
+    if(dumping_no_error) return;
+    dumping_no_error = true;
     uint32_t cpu_num = conf::get_int("root", "core_num", 1);
     for(uint32_t i = 0; i < cpu_num; i++) {
         sprintf(logbuf, "CPU %d Regs:\n", i);
