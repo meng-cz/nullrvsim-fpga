@@ -49,33 +49,63 @@ bool test_serial_2(string dev_path) {
     SerialFPGAAdapter * dev = new SerialFPGAAdapter(dev_path, baudrate);
 
     printf("Test 2 Start\n");
+    HTPFrames frames;
 
     printf("Set Page 0x8001_0 as 0x8877665544332211\n");
-    dev->pxymem_page_set(0, 0x80010UL, 0x8877665544332211UL);
+    htp_push_pxymem_page_set(frames, 0, 0x80010UL, 0x8877665544332211UL);
 
     printf("Write 0x8001_0080 as 0x0505050505050505\n");
-    dev->pxymem_write(0, 0x80010080UL, 0x0505050505050505UL);
+    htp_push_pxymem_write(frames, 0, 0x80010080UL, 0x0505050505050505UL);
 
-    printf("Read 0x8001_0000\n");
-    assert(0x8877665544332211UL == dev->pxymem_read(0, 0x80010000UL));
+    dev->process_frames(frames);
+    frames.clear();
 
-    printf("Read 0x8001_0040\n");
-    assert(0x8877665544332211UL == dev->pxymem_read(0, 0x80010040UL));
+    htp_push_pxymem_read(frames, 0, 0x80010000UL);
+    htp_push_pxymem_read(frames, 0, 0x80010040UL);
+    htp_push_pxymem_read(frames, 0, 0x80010080UL);
 
-    printf("Read 0x8001_0080\n");
-    assert(0x0505050505050505UL == dev->pxymem_read(0, 0x80010080UL));
+    dev->process_frames(frames);
+
+    {
+        RawDataT value;
+        printf("Read 0x8001_0000\n");
+        htp_pop_pxymem_read(frames, &value);
+        assert(0x8877665544332211UL == value);
+
+        printf("Read 0x8001_0040\n");
+        htp_pop_pxymem_read(frames, &value);
+        assert(0x8877665544332211UL == value);
+
+        printf("Read 0x8001_0080\n");
+        htp_pop_pxymem_read(frames, &value);
+        assert(0x0505050505050505UL == value);
+    }
+    frames.clear();
 
     printf("Copy Page 0x8001_0 to 0x8004_0\n");
-    dev->pxymem_page_copy(0, 0x80040UL, 0x80010UL);
-    
-    printf("Read 0x8004_0000\n");
-    assert(0x8877665544332211UL == dev->pxymem_read(0, 0x80040000UL));
+    htp_push_pxymem_page_copy(frames, 0, 0x80040UL, 0x80010UL);
 
-    printf("Read 0x8004_0040\n");
-    assert(0x8877665544332211UL == dev->pxymem_read(0, 0x80040040UL));
+    htp_push_pxymem_read(frames, 0, 0x80040000UL);
+    htp_push_pxymem_read(frames, 0, 0x80040040UL);
+    htp_push_pxymem_read(frames, 0, 0x80040080UL);
 
-    printf("Read 0x8004_0080\n");
-    assert(0x0505050505050505UL == dev->pxymem_read(0, 0x80040080UL));
+    dev->process_frames(frames);
+
+    {
+        RawDataT value;
+        printf("Read 0x8004_0000\n");
+        htp_pop_pxymem_read(frames, &value);
+        assert(0x8877665544332211UL == value);
+
+        printf("Read 0x8004_0040\n");
+        htp_pop_pxymem_read(frames, &value);
+        assert(0x8877665544332211UL == value);
+
+        printf("Read 0x8004_0080\n");
+        htp_pop_pxymem_read(frames, &value);
+        assert(0x0505050505050505UL == value);
+    }
+    frames.clear();
     
     printf("Test 2 PASSED\n");
 
@@ -147,42 +177,41 @@ bool test_serial_4(string dev_path) {
 
     printf("Test 4 Start\n");
 
+    HTPFrames frames;
+
     printf("Clear Page 0x82000 - 0x82003\n");
-    dev->pxymem_page_set(0, 0x82000UL, 0);
-    dev->pxymem_page_set(0, 0x82001UL, 0);
-    dev->pxymem_page_set(0, 0x82002UL, 0);
-    dev->pxymem_page_set(0, 0x82003UL, 0);
+    htp_push_pxymem_page_zero(frames, 0, 0x82000UL);
+    htp_push_pxymem_page_zero(frames, 0, 0x82001UL);
+    htp_push_pxymem_page_zero(frames, 0, 0x82002UL);
+    htp_push_pxymem_page_zero(frames, 0, 0x82003UL);
 
     printf("Init PageTable of VPage 0x10000 -> 0x82003\n");
     
-    dev->pxymem_write(0, 0x82000000UL + 8 * ((0x10000UL >> 18) & 0x1ff), (0x82001UL << 10) + 1);
-    dev->pxymem_write(0, 0x82001000UL + 8 * ((0x10000UL >> 9) & 0x1ff), (0x82002UL << 10) + 1);
-    dev->pxymem_write(0, 0x82002000UL + 8 * ((0x10000UL) & 0x1ff), (0x82003UL << 10) + 0xdf);
-    dev->pxymem_write(0, 0x82003000UL, 0x01000293UL | (0xf2028053UL << 32));
-    dev->pxymem_write(0, 0x82003008UL, 0x06400893UL | (0x00000073UL << 32));
+    htp_push_pxymem_write(frames, 0, 0x82000000UL + 8 * ((0x10000UL >> 18) & 0x1ff), (0x82001UL << 10) + 1);
+    htp_push_pxymem_write(frames, 0, 0x82001000UL + 8 * ((0x10000UL >> 9) & 0x1ff), (0x82002UL << 10) + 1);
+    htp_push_pxymem_write(frames, 0, 0x82002000UL + 8 * ((0x10000UL) & 0x1ff), (0x82003UL << 10) + 0xdf);
+    htp_push_pxymem_write(frames, 0, 0x82003000UL, 0x01000293UL | (0xf2028053UL << 32));
+    htp_push_pxymem_write(frames, 0, 0x82003008UL, 0x06400893UL | (0x00000073UL << 32));
 
     printf("Setup MMU\n");
-    dev->set_mmu(0, 0x82000000UL, 0);
+    htp_push_set_mmu(frames, 0, 0x82000000UL, 0);
 
     printf("Flush TLB\n");
-    dev->flush_tlb_all(0);
+    htp_push_flush_tlb_all(frames, 0);
 
     printf("\nFence-I\n");
-    dev->sync_inst_stream(0);
+    htp_push_sync_inst_stream(frames, 0);
     
-    printf("Start ILA Trigger, and Type \"1\" to Continue...\n");
-    do {
-        if(getchar() == '1') break;
-    } while(true);
-
     printf("\nRedirect to VAddr 0x10000000\n");
-    dev->redirect(0, 0x10000000UL);
+    htp_push_redirect(frames, 0, 0x10000000UL);
+
+    htp_push_next(frames);
 
     uint32_t cpuid = 0;
     VirtAddrT pc = 0;
     uint32_t cause = 0;
     uint64_t arg = 0;
-    assert(dev->next(&cpuid, &pc, &cause, &arg));
+    htp_pop_next(frames, &cpuid, &pc, &cause, &arg);
 
     printf("Got Event on CPU %d, @0x%lx, Cause %d, Arg 0x%lx\n", cpuid, pc, cause, arg);
 

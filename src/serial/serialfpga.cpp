@@ -217,7 +217,7 @@ void SerialFPGAAdapter::set_mmu(uint32_t cpu_id, PhysAddrT pgtable, AsidT asid) 
     _append_int(buf, pgtable >> PAGE_ADDR_OFFSET, 5);
     int8_t value = _perform_op(SEROP_MMU, buf, ret);
     simroot_assertf(SEROP_MMU == value, "Operation SetMMU on Core %d (0x%lx, 0x%d) Failed: %d", cpu_id, pgtable >> PAGE_ADDR_OFFSET, asid, value);
-    DEBUGOP("SetMMU (0x%lx, 0x%d)", pgtable >> PAGE_ADDR_OFFSET, asid);
+    DEBUGOP("SetMMU (0x%lx, %d)", pgtable >> PAGE_ADDR_OFFSET, asid);
 }
 
 void SerialFPGAAdapter::redirect(uint32_t cpu_id, VirtAddrT addr) {
@@ -388,7 +388,7 @@ void SerialFPGAAdapter::pxymem_page_zero(uint32_t cpu_id, PageIndexT ppn) {
     _append_int(buf, ppn, 5);
     int8_t rvalue = _perform_op(SEROP_PGST, buf, ret);
     simroot_assertf(SEROP_PGST == rvalue, "Operation PageZero on Core %d (0x%lx) Failed: %d", cpu_id, ppn, rvalue);
-    DEBUGOP("PageSet (0x%lx)", ppn);
+    DEBUGOP("PageZero (0x%lx)", ppn);
 }
 
 void SerialFPGAAdapter::hfutex_setmask(uint32_t cpu_id, VirtAddrT vaddr) {
@@ -440,79 +440,99 @@ void SerialFPGAAdapter::process_frames(HTPFrames &frames) {
 }
 
 void SerialFPGAAdapter::_send_frame(HTPFrame &frame) {
+    uint32_t cpu_id = frame.cpuid;
     BufT buf;
     buf.push_back((uint8_t)(frame.opcode));
     switch (frame.opcode)
     {
     case HTOP::next:
+        DEBUGOP("S-Next");
         break;
     case HTOP::halt:
+        DEBUGOP("S-Halt");
         _append_int(buf, frame.cpuid, 1);
         break;
     case HTOP::itr:
+        DEBUGOP("S-Interrupt");
         _append_int(buf, frame.cpuid, 1);
         break;
     case HTOP::mmu:
+        DEBUGOP("S-SetMMU (0x%lx, %ld)", frame.x2 >> PAGE_ADDR_OFFSET, frame.x1);
         _append_int(buf, frame.cpuid, 1);
         _append_int(buf, frame.x1, 2);
         _append_int(buf, frame.x2 >> PAGE_ADDR_OFFSET, 5);
         break;
     case HTOP::redir:
+        DEBUGOP("S-Redirect (0x%lx)", frame.x1);
         _append_int(buf, frame.cpuid, 1);
         _append_int(buf, frame.x1, 6);
         break;
     case HTOP::ftlb:
+        DEBUGOP("S-FlushTLB");
         _append_int(buf, frame.cpuid, 1);
         break;
     case HTOP::ftlb2:
+        DEBUGOP("S-FlushTLB2 (%ld, 0x%lx)", frame.x1, frame.x2 >> PAGE_ADDR_OFFSET);
         _append_int(buf, frame.cpuid, 1);
         _append_int(buf, frame.x1, 2);
         _append_int(buf, frame.x2 >> PAGE_ADDR_OFFSET, 5);
         break;
     case HTOP::synci:
+        DEBUGOP("S-SyncI");
         _append_int(buf, frame.cpuid, 1);
         break;
     case HTOP::regrd:
+        DEBUGOP("S-RegRead (%ld)", frame.x1);
         _append_int(buf, frame.cpuid, 1);
         _append_int(buf, frame.x1, 2);
         break;
     case HTOP::regwt:
+        DEBUGOP("S-RegWrite (%ld, 0x%lx)", frame.x1, frame.x2);
         _append_int(buf, frame.cpuid, 1);
         _append_int(buf, frame.x1, 2);
         _append_int(buf, frame.x2, 8);
         break;
     case HTOP::memrd:
+        DEBUGOP("S-MemRead (0x%lx)", frame.x1);
         _append_int(buf, frame.cpuid, 1);
         _append_int(buf, frame.x1, 6);
         break;
     case HTOP::memwt:
+        DEBUGOP("S-MemWrite (0x%lx, 0x%lx)", frame.x1, frame.x2);
         _append_int(buf, frame.cpuid, 1);
         _append_int(buf, frame.x1, 6);
         _append_int(buf, frame.x2, 8);
         break;
     case HTOP::pgst:
+        DEBUGOP("S-PageSet (0x%lx, 0x%lx)", frame.x1, frame.x2);
         _append_int(buf, frame.cpuid, 1);
         _append_int(buf, frame.x1, 5);
         _append_int(buf, frame.x2, 8);
         break;
     case HTOP::pgcp:
+        DEBUGOP("S-PageCopy (0x%lx -> 0x%lx)", frame.x2, frame.x1);
         _append_int(buf, frame.cpuid, 1);
         _append_int(buf, frame.x1, 5);
         _append_int(buf, frame.x2, 5);
         break;
     case HTOP::clk:
+        DEBUGOP("S-Clock");
         break;
     case HTOP::uclk:
+        DEBUGOP("S-UClock");
         _append_int(buf, frame.cpuid, 1);
         break;
     case HTOP::hfset:
+        DEBUGOP("S-HFSET (0x%lx)", frame.x1);
         _append_int(buf, frame.cpuid, 1);
         _append_int(buf, frame.x1, 6);
         break;
     case HTOP::hfclr:
+        DEBUGOP("S-HFCLR");
         _append_int(buf, frame.cpuid, 1);
         break;
     case HTOP::pgzero:
+        DEBUGOP("S-PageZero (0x%lx)", frame.x1);
         _append_int(buf, frame.cpuid, 1);
         _append_int(buf, frame.x1, 5);
         break;
@@ -524,18 +544,20 @@ void SerialFPGAAdapter::_send_frame(HTPFrame &frame) {
 }
 
 void SerialFPGAAdapter::_recv_frame(HTPFrame &frame) {
+    uint32_t cpu_id = frame.cpuid;
     BufT buf;
     buf.assign(1 + (SEROP_RET_BITS[(uint32_t)(frame.opcode)]/8), 0);
     _read_serial(buf.data(), buf.size());
     uint8_t ret = _pop_int(buf, 1);
-    simroot_assert(ret == ((uint32_t)(frame.opcode)));
+    simroot_assertf(ret == ((uint32_t)(frame.opcode)), "Failed OP %d: errno %d", ((uint32_t)(frame.opcode)), ret);
     switch (frame.opcode)
     {
     case HTOP::next:
-        frame.cpuid = _pop_int(buf, 1);
+        cpu_id = frame.cpuid = _pop_int(buf, 1);
         frame.x1 = _pop_int(buf, 1);
         frame.x2 = _pop_int(buf, 6);
         frame.x3 = _pop_int(buf, 6);
+        DEBUGOP("S-Next -> (0x%lx, %ld, 0x%lx)", frame.x2, frame.x1, frame.x3);
         break;
     case HTOP::halt:
     case HTOP::itr:
@@ -546,12 +568,14 @@ void SerialFPGAAdapter::_recv_frame(HTPFrame &frame) {
     case HTOP::synci:
         break;
     case HTOP::regrd:
-        frame.x1 = _pop_int(buf, 8);
+        frame.x2 = _pop_int(buf, 8);
+        DEBUGOP("S-RegRead -> 0x%lx", frame.x2);
         break;
     case HTOP::regwt:
         break;
     case HTOP::memrd:
-        frame.x1 = _pop_int(buf, 8);
+        frame.x2 = _pop_int(buf, 8);
+        DEBUGOP("S-MemRead -> 0x%lx", frame.x2);
         break;
     case HTOP::memwt:
     case HTOP::pgst:
@@ -559,9 +583,11 @@ void SerialFPGAAdapter::_recv_frame(HTPFrame &frame) {
         break;
     case HTOP::clk:
         frame.x1 = _pop_int(buf, 8);
+        DEBUGOP("S-Clock -> 0x%lx", frame.x1);
         break;
     case HTOP::uclk:
         frame.x1 = _pop_int(buf, 8);
+        DEBUGOP("S-UClock -> 0x%lx", frame.x1);
         break;
     case HTOP::hfset:
     case HTOP::hfclr:
