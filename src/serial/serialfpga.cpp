@@ -570,6 +570,7 @@ void SerialFPGAAdapter::_recv_frame(HTPFrame &frame) {
     case HTOP::ftlb:
     case HTOP::ftlb2:
     case HTOP::synci:
+        DEBUGOP("S-Noret");
         break;
     case HTOP::regrd:
         frame.x2 = _pop_int(buf, 8);
@@ -584,6 +585,7 @@ void SerialFPGAAdapter::_recv_frame(HTPFrame &frame) {
     case HTOP::memwt:
     case HTOP::pgst:
     case HTOP::pgcp:
+        DEBUGOP("S-Noret");
         break;
     case HTOP::clk:
         frame.x1 = _pop_int(buf, 8);
@@ -596,6 +598,7 @@ void SerialFPGAAdapter::_recv_frame(HTPFrame &frame) {
     case HTOP::hfset:
     case HTOP::hfclr:
     case HTOP::pgzero:
+        DEBUGOP("S-Noret");
         break;
     default:
         simroot_assert(0);
