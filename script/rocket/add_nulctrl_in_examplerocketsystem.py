@@ -24,7 +24,6 @@ with open(nulctrl_path, "r") as ifile:
 
 for i in range(len(nulctrl_lines)):
     nulctrl_lines[i] = nulctrl_lines[i].replace("Queue", "Nulqueue")
-    nulctrl_lines[i] = nulctrl_lines[i].replace("Queue_1", "Nulqueue_1")
 
 nulctrl_port_list = [
     ("output", "", "inited"),

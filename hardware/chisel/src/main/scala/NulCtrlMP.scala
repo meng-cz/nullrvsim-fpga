@@ -908,15 +908,17 @@ class NulCPUCtrlMPWithUart(cpunum: Int, frequency: Int, baudRate: Int) extends M
     val tx = Module(new Tx(frequency, baudRate))
     val rx = Module(new Rx(frequency, baudRate))
     val rxbuffer = Module(new Queue(UInt(8.W), 512))
+    val txbuffer = Module(new Queue(UInt(8.W), 64))
 
     io.dbg_sta := ctrl.io.dbg_sta
 
     io.cpu <> ctrl.io.cpu 
     io.txd := tx.io.txd 
     rx.io.rxd := io.rxd 
-    ctrl.io.tx <> tx.io.channel
+    ctrl.io.tx <> txbuffer.io.enq
     ctrl.io.rx <> rxbuffer.io.deq
     rxbuffer.io.enq <> rx.io.channel
+    txbuffer.io.deq <> tx.io.channel
 }
 
 object NulCPUCtrlUartMPMain extends App {
