@@ -106,6 +106,7 @@ class NulCPUCtrlMP(cpunum: Int) extends Module {
     val STATE_RECV_ARG      = 3.U
     val STATE_SEND_HEAD     = 4.U 
     val STATE_SEND_ARG      = 5.U 
+    val STATE_ERROR         = 6.U 
 
     val STATE_WAIT_NEXT     = 8.U 
     val STATE_NEXT          = 9.U 
@@ -129,7 +130,10 @@ class NulCPUCtrlMP(cpunum: Int) extends Module {
     val trans_bytes = RegInit(0.U(10.W))
     val trans_pos = RegInit(0.U(10.W))
 
-    io.dbg_sta := state.pad(8) 
+    val errno = RegInit(0.U(6.W))
+    val inited = (state =/= STATE_INIT_WAIT) && (state =/= STATE_DO_INIT)
+    val errored = (state === STATE_ERROR)
+    io.dbg_sta := Cat(inited, errored, errno(5,0)) 
 
     val opcode = RegInit(0.U(5.W))
     val opoff = RegInit(0.U(3.W))
@@ -160,6 +164,9 @@ class NulCPUCtrlMP(cpunum: Int) extends Module {
         opcode := rxop
         opoff := rxoff
 
+        trans_pos := 1.U
+        state := STATE_RECV_ARG
+
         when(rxop === SEROP_HALT || rxop === SEROP_ITR || rxop === SEROP_FTLB || rxop === SEROP_SYNCI || rxop === SEROP_UCLK || rxop === SEROP_HFCLR) {
             trans_bytes := 2.U 
         }.elsewhen(rxop === SEROP_REGRD) {
@@ -178,12 +185,12 @@ class NulCPUCtrlMP(cpunum: Int) extends Module {
             trans_bytes := 15.U 
         }.elsewhen(rxop === SEROP_MEMWT) {
             trans_bytes := 16.U 
-        }.otherwise {
+        }.elsewhen(rxop === SEROP_NEXT || rxop === SEROP_CLK) {
             trans_bytes := 1.U 
+        } .otherwise {
+            state := STATE_ERROR
+            errno := rxop
         }
-
-        trans_pos := 1.U
-        state := STATE_RECV_ARG
     }
 
     when(state === STATE_RECV_ARG && trans_bytes =/= trans_pos) {
@@ -894,7 +901,7 @@ class NulCPUCtrlMPWithUart(cpunum: Int, frequency: Int, baudRate: Int) extends M
         val cpu     = Vec(cpunum, new NulCPUBundle())
         val txd     = Output(UInt(1.W))
         val rxd     = Input(UInt(1.W))
-        val dbg_sta = Output(UInt(5.W))
+        val dbg_sta = Output(UInt(8.W))
     })
 
     val ctrl = Module(new NulCPUCtrlMP(cpunum))
