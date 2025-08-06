@@ -207,6 +207,8 @@ bool test_serial_4(string dev_path) {
 
     htp_push_next(frames);
 
+    dev->process_frames(frames);
+
     uint32_t cpuid = 0;
     VirtAddrT pc = 0;
     uint32_t cause = 0;
