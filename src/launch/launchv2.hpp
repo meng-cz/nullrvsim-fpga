@@ -42,9 +42,9 @@ bool mpv2(std::vector<string> &argv, vector<string> &envs) {
 
     uint32_t cpu_num = conf::get_int("root", "core_num", 1);
     simroot_assert(cpu_num > 0 && cpu_num <= 256);
-    uint64_t mem_size = conf::get_int("root", "memory_size_gb", 1);
+    uint64_t mem_size = conf::get_int("root", "memory_size_mb", 1000);
     simroot_assert(mem_size > 0 && mem_size <= 256);
-    mem_size = (mem_size << 30);
+    mem_size = (mem_size << 20);
     uint64_t mem_base = conf::get_inthex("root", "memory_base_addr_hex", 0);
     simroot_assert((mem_base % PAGE_LEN_BYTE) == 0);
 
@@ -68,9 +68,9 @@ bool mpser(string devpath, vector<string> &argv, vector<string> &envs) {
 
     uint32_t cpu_num = conf::get_int("root", "core_num", 1);
     simroot_assert(cpu_num > 0 && cpu_num <= 256);
-    uint64_t mem_size = conf::get_int("root", "memory_size_gb", 1);
+    uint64_t mem_size = conf::get_int("root", "memory_size_mb", 1500);
     simroot_assert(mem_size > 0 && mem_size <= 256);
-    mem_size = (mem_size << 30);
+    mem_size = (mem_size << 20);
     uint64_t mem_base = conf::get_inthex("root", "memory_base_addr_hex", 0);
     simroot_assert((mem_base % PAGE_LEN_BYTE) == 0);
     uint32_t baudrate = conf::get_int("serial", "baudrate", 115200);
