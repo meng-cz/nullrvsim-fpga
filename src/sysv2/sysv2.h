@@ -55,12 +55,13 @@ protected:
     void target_memops_to_htp_frame(HTPFrames &frames, uint32_t cpu_id, vector<TgtPgCpy> &cplist);
     void target_memops_to_htp_frame(HTPFrames &frames, uint32_t cpu_id, TgtMemSetList &stlist, vector<TgtPgCpy> &cplist);
 
-    
+
 
     VirtAddrT _pop_context_and_execute(uint32_t cpu_id);
     void _push_context_stack(uint32_t cpu_id, VirtAddrT nextpc);
 
     bool _memcpy_to_target(uint32_t cpu_id, VirtAddrT tgt_dst, void * src, uint64_t size);
+    bool _memcpy_to_target(HTPFrames &frames, uint32_t cpu_id, VirtAddrT tgt_dst, void * src, uint64_t size);
     bool _memcpy_from_target(uint32_t cpu_id, void * dst, VirtAddrT tgt_src, uint64_t size);
     bool _strcpy_from_target(uint32_t cpu_id, char * dst, VirtAddrT tgt_src);
     bool _check_vaddr_valid(uint32_t cpu_id, ThreadV2 *curt, VPageIndexT vpn, PageIndexT *ppn);

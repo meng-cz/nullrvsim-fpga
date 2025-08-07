@@ -309,7 +309,7 @@ bool SMPSystemV2::_check_vaddr_valid(uint32_t cpu_id, ThreadV2 *curt, VPageIndex
     return true;
 }
 
-bool SMPSystemV2::_memcpy_to_target(uint32_t cpu_id, VirtAddrT tgt_dst, void * src, uint64_t size) {
+bool SMPSystemV2::_memcpy_to_target(HTPFrames &frames, uint32_t cpu_id, VirtAddrT tgt_dst, void * src, uint64_t size) {
     ThreadV2 *curt = running_threads[cpu_id];
 
     VPageIndexT vpn = 0;
@@ -344,7 +344,6 @@ bool SMPSystemV2::_memcpy_to_target(uint32_t cpu_id, VirtAddrT tgt_dst, void * s
         memcpy((uint8_t*)(_hostbuf.data()) + _offset, src, size);
     }
 
-    HTPFrames frames;
     for(uint64_t pos = send_vaddr; pos < send_vaddr + send_size; ) {
         vpn = (pos >> PAGE_ADDR_OFFSET);
         if(!_check_vaddr_valid(cpu_id, curt, vpn, &ppn)) {
@@ -368,8 +367,16 @@ bool SMPSystemV2::_memcpy_to_target(uint32_t cpu_id, VirtAddrT tgt_dst, void * s
             continue;
         }
     }
-    cpus->process_frames(frames);
 
+    return true;
+}
+
+bool SMPSystemV2::_memcpy_to_target(uint32_t cpu_id, VirtAddrT tgt_dst, void * src, uint64_t size) {
+    HTPFrames frames;
+    if(!_memcpy_to_target(frames, cpu_id, tgt_dst, src, size)) {
+        return false;
+    }
+    cpus->process_frames(frames);
     return true;
 }
 
@@ -1894,7 +1901,7 @@ SYSCALL_DEFINE_V2(113, clock_gettime) {
     int64_t ret = clock_gettime(clockid, &t);
     if(ret < 0) {
         ret = -errno;
-    } else if(!_memcpy_to_target(cpu_id, usr_tp, &t, sizeof(struct timespec))) {
+    } else if(!_memcpy_to_target(frames, cpu_id, usr_tp, &t, sizeof(struct timespec))) {
         LOG_SYSCALL_2("clock_gettime", "%ld", clockid, "0x%lx", usr_tp, "%s", "EFAULT");
         ECALL_RET(-EFAULT, pc+4);
     }
