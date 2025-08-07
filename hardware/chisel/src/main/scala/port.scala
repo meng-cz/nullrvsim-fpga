@@ -47,17 +47,17 @@ class Tx(frequency: Int, baudRate: Int) extends Module {
 
         cntReg := BIT_CNT
         when(bitsReg =/= 0.U) {
-        val shift = shiftReg >> 1
-        shiftReg := 1.U ## shift(9, 0)
-        bitsReg := bitsReg - 1.U
+            val shift = shiftReg >> 1
+            shiftReg := 1.U ## shift(9, 0)
+            bitsReg := bitsReg - 1.U
         } .otherwise {
-        when(io.channel.valid) {
-            // two stop bits, data, one start bit
-            shiftReg := 3.U ## io.channel.bits ## 0.U
-            bitsReg := 11.U
-        } .otherwise {
-            shiftReg := 0x7ff.U
-        }
+            when(io.channel.valid) {
+                // two stop bits, data, one start bit
+                shiftReg := 3.U ## io.channel.bits ## 0.U
+                bitsReg := 11.U
+            } .otherwise {
+                shiftReg := 0x7ff.U
+            }
         }
 
     } .otherwise {

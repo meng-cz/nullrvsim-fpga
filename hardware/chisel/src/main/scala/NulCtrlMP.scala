@@ -127,6 +127,8 @@ class NulCPUCtrlMP(cpunum: Int) extends Module {
     val STATE_INST          = 23.U 
     val STATE_HFUTEX        = 24.U 
 
+    val STATE_SLEEP         = 31.U 
+
     val state = RegInit(0.U(5.W))
     val trans_bytes = RegInit(0.U(10.W))
     val trans_pos = RegInit(0.U(10.W))
@@ -156,6 +158,14 @@ class NulCPUCtrlMP(cpunum: Int) extends Module {
     val hfutex_hit = hfutex_masks(opidx).map(_ === hfutex_match_reg).reduce(_ || _)
     val hfutex_hit_set = hfutex_masks(opidx).map(_ === hfutex_set_value).reduce(_ || _)
     
+    val sleep_cnt = RegInit(0.U(4.W))
+    when(state === STATE_SLEEP) {
+        sleep_cnt := sleep_cnt + 1.U
+        when(sleep_cnt === 15.U) {
+            state := STATE_RECV_HEAD
+        }
+    }
+
     when(state === STATE_RECV_HEAD) {
         io.rx.ready := true.B
         when(io.rx.valid) {
@@ -285,7 +295,7 @@ class NulCPUCtrlMP(cpunum: Int) extends Module {
                 state := STATE_SEND_ARG
             }.otherwise {
                 trans_bytes := 0.U
-                state := STATE_RECV_HEAD
+                state := STATE_SLEEP
             }
         }
     }
@@ -297,7 +307,7 @@ class NulCPUCtrlMP(cpunum: Int) extends Module {
             when(trans_pos + 1.U === trans_bytes) {
                 trans_pos := 0.U
                 trans_bytes := 0.U
-                state := STATE_RECV_HEAD
+                state := STATE_SLEEP
             }.otherwise {
                 trans_pos := trans_pos + 1.U
             }
@@ -417,7 +427,7 @@ class NulCPUCtrlMP(cpunum: Int) extends Module {
         when(cnt(8)) {
             cnt := 1.U 
             when(init_cnt === (cpunum - 1).U) {
-                state := STATE_RECV_HEAD
+                state := STATE_SLEEP
             }.otherwise {
                 val nextidx = (init_cnt + 1.U).pad(8)
                 oparg(1) := nextidx(7,0)
@@ -831,7 +841,7 @@ class NulCPUCtrlMP(cpunum: Int) extends Module {
         when(cnt(41)) {
             when(pgbuf_cpu_pos === pgbuf_uart_pos) {
                 cnt := 1.U 
-                state := STATE_RECV_HEAD
+                state := STATE_SLEEP
                 pgbuf_cpu_pos := 0.U 
                 pgbuf_uart_pos := 0.U 
             }
