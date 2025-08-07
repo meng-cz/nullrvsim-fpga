@@ -1824,9 +1824,15 @@ SYSCALL_DEFINE_V2(96, set_tid_address) {
 }
 
 SYSCALL_DEFINE_V2(98, futex) {
-    VirtAddrT uaddr = IREG_V(a0);
-    int32_t futex_op = IREG_V(a1);
-    uint32_t val = IREG_V(a2);
+    HTPFrames rdframes;
+    htp_push_regacc_read(rdframes, cpu_id, ireg_index_of("a0"));
+    htp_push_regacc_read(rdframes, cpu_id, ireg_index_of("a1"));
+    htp_push_regacc_read(rdframes, cpu_id, ireg_index_of("a2"));
+    cpus->process_frames(rdframes);
+
+    VirtAddrT uaddr = htp_pop_regacc_read(rdframes);
+    int32_t futex_op = htp_pop_regacc_read(rdframes);
+    uint32_t val = htp_pop_regacc_read(rdframes);
 
     futex_op &= 127;
 
@@ -1841,9 +1847,14 @@ SYSCALL_DEFINE_V2(98, futex) {
     }
 
     if(futex_op == FUTEX_WAIT || futex_op == FUTEX_WAIT_BITSET) {
-        VirtAddrT timeout = IREG_V(a3);
+        rdframes.clear();
+        htp_push_regacc_read(rdframes, cpu_id, ireg_index_of("a3"));
+        htp_push_regacc_read(rdframes, cpu_id, ireg_index_of("a5"));
+        cpus->process_frames(rdframes);
+
+        VirtAddrT timeout = htp_pop_regacc_read(rdframes);
         uint32_t val2 = timeout;
-        uint32_t val3 = IREG_V(a5);
+        uint32_t val3 = htp_pop_regacc_read(rdframes);
         RawDataT _v = cpus->pxymem_read(cpu_id, paddr & (~7UL));
         uint32_t v = ((paddr & 4) ? (_v >> 32) : _v);
         if(v != val) {
@@ -1859,7 +1870,7 @@ SYSCALL_DEFINE_V2(98, futex) {
         for(uint32_t i = 0; i < cpu_num; i++) {
             if(hfutex_mask[i].find(paddr) != hfutex_mask[i].end()) {
                 hfutex_mask[i].clear();
-                cpus->hfutex_clearmask(i);
+                htp_push_hfutex_clearmask(frames, i);
             }
         }
         return nextpc;
@@ -1877,7 +1888,7 @@ SYSCALL_DEFINE_V2(98, futex) {
         }
         sch_lock.unlock();
         if(futex_op == FUTEX_WAKE && wake_cnt == 0) {
-            cpus->hfutex_setmask(cpu_id, uaddr);
+            htp_push_hfutex_setmask(frames, cpu_id, uaddr);
             hfutex_mask[cpu_id].emplace(paddr, uaddr);
         }
         LOG_SYSCALL_4("futex_wake", "0x%lx", uaddr, "%d", futex_op, "0x%x", val, "0x%x", futex_mask, "%ld", wake_cnt);
@@ -1894,8 +1905,13 @@ SYSCALL_DEFINE_V2(99, set_robust_list) {
 }
 
 SYSCALL_DEFINE_V2(113, clock_gettime) {
-    uint64_t clockid = IREG_V(a0);
-    VirtAddrT usr_tp = IREG_V(a1);
+    HTPFrames rdframes;
+    htp_push_regacc_read(rdframes, cpu_id, ireg_index_of("a0"));
+    htp_push_regacc_read(rdframes, cpu_id, ireg_index_of("a1"));
+    cpus->process_frames(rdframes);
+
+    uint64_t clockid = htp_pop_regacc_read(rdframes);
+    VirtAddrT usr_tp = htp_pop_regacc_read(rdframes);
 
     struct timespec t;
     int64_t ret = clock_gettime(clockid, &t);

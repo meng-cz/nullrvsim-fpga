@@ -257,3 +257,24 @@ HTOP htp_pop_next_return(HTPFrames &frames) {
     return frames.front().opcode;
 }
 
+uint64_t htp_pop_regacc_read(HTPFrames &frames) {
+    uint64_t ret = 0; 
+    htp_pop_regacc_read(frames, &ret);
+    return ret;
+}
+uint64_t htp_pop_pxymem_read(HTPFrames &frames) {
+    uint64_t ret = 0; 
+    htp_pop_regacc_read(frames, &ret);
+    return ret;
+}
+uint64_t htp_pop_get_current_tick(HTPFrames &frames) {
+    uint64_t ret = 0; 
+    htp_pop_get_current_tick(frames, &ret);
+    return ret;
+}
+uint64_t htp_pop_get_current_utick(HTPFrames &frames) {
+    uint64_t ret = 0; 
+    htp_pop_get_current_utick(frames, &ret);
+    return ret;
+}
+

@@ -96,6 +96,11 @@ void htp_pop_page_read(HTPFrames &frames, void *data);
 void htp_pop_get_current_tick(HTPFrames &frames, uint64_t *data);
 void htp_pop_get_current_utick(HTPFrames &frames, uint64_t *data);
 
+uint64_t htp_pop_regacc_read(HTPFrames &frames);
+uint64_t htp_pop_pxymem_read(HTPFrames &frames);
+uint64_t htp_pop_get_current_tick(HTPFrames &frames);
+uint64_t htp_pop_get_current_utick(HTPFrames &frames);
+
 HTOP htp_pop_next_return(HTPFrames &frames);
 
 namespace simcpu {
