@@ -2308,8 +2308,8 @@ SYSCALL_DEFINE_V2(215, munmap) {
     TgtMemSetList stlist;
     CURT->pgtable->free_mmap(vaddr, length, &stlist);
     if(!stlist.empty()) {
-        for(auto &st : stlist) _perform_target_memset(cpu_id, st); 
-        cpus->flush_tlb_all(cpu_id);
+        target_memops_to_htp_frame(frames, cpu_id, stlist);
+        htp_push_flush_tlb_all(frames, cpu_id);
     }
 
     LOG_SYSCALL_2("munmap", "0x%lx", vaddr, "0x%lx", length, "%ld", 0UL);

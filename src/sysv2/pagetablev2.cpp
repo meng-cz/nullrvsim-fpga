@@ -159,9 +159,7 @@ void ThreadPageTableV2::free_mmap(VirtAddrT addr, uint64_t size, TgtMemSetList *
                 delete s.fd;
             }
         }
-        // NO-NEED since these VM segment will never be reused
         // free page table
-        TgtMemSetList notuse;
         for(VPageIndexT vpn = s.vpindex; vpn < s.vpindex + s.vpcnt; vpn++) {
             PTET pte = pt_get(vpn, nullptr);
             // simroot_assert(pte & PTE_V);
@@ -169,7 +167,7 @@ void ThreadPageTableV2::free_mmap(VirtAddrT addr, uint64_t size, TgtMemSetList *
                 continue;
             }
             if(!(pte & PTE_NALLOC)) ppman->free(pte >> 10);
-            pt->pt_erase(vpn, &notuse);
+            pt->pt_erase(vpn, stlist);
         }
     }
 }
