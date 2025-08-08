@@ -157,23 +157,25 @@ VirtAddrT SMPSystemV2::_pop_context_and_execute(uint32_t cpu_id) {
     assert(running_threads[cpu_id]);
     ThreadV2 *thread = running_threads[cpu_id];
 
+    HTPFrames frames;
+
     // Set MMU
     AsidT asid = (using_asid?(thread->asid):0);
     PhysAddrT ptbase = thread->pgtable->get_page_table_base();
     if(((ptbase | asid) != last_running_mmu[cpu_id]) || (last_running_tids[cpu_id] != thread->tid)) {
-        cpus->set_mmu(cpu_id, ptbase, asid);
-        cpus->flush_tlb_all(cpu_id);
+        htp_push_set_mmu(frames, cpu_id, ptbase, asid);
+        htp_push_flush_tlb_all(frames, cpu_id);
         last_running_mmu[cpu_id] = (ptbase | asid);
         last_running_tids[cpu_id] = thread->tid;
         if(hfutex_mask[cpu_id].size()) {
             hfutex_mask[cpu_id].clear();
-            cpus->hfutex_clearmask(cpu_id);
+            htp_push_hfutex_clearmask(frames, cpu_id);
         }
     }
 
     // Flush memory operation during waiting
     for(auto &st : thread->stlist_on_ready) {
-        simroot_assert(_memcpy_to_target(cpu_id, st.vaddr, st.data.data(), st.data.size()));
+        simroot_assert(_memcpy_to_target(frames, cpu_id, st.vaddr, st.data.data(), st.data.size()));
     }
     thread->stlist_on_ready.clear();
 
@@ -182,12 +184,14 @@ VirtAddrT SMPSystemV2::_pop_context_and_execute(uint32_t cpu_id) {
     thread->context_stack.pop_back();
     uint32_t regnum = (has_hard_fp?64:32);
     for(uint32_t i = 1; i < regnum; i++) {
-        cpus->regacc_write(cpu_id, i, context[i]);
+        htp_push_regacc_write(frames, cpu_id, i, context[i]);
     }
 
     // Redirect
     VirtAddrT pc = context[0];
-    cpus->redirect(cpu_id, pc);
+    htp_push_redirect(frames, cpu_id, pc);
+
+    cpus->process_frames(frames);
 
     return pc;
 }
@@ -199,8 +203,13 @@ void SMPSystemV2::_push_context_stack(uint32_t cpu_id, VirtAddrT nextpc) {
     thread->context_stack.emplace_back();
     RVRegArray &context = thread->context_stack.back();
     uint32_t regnum = (has_hard_fp?64:32);
+    HTPFrames rdframes;
     for(uint32_t i = 1; i < regnum; i++) {
-        context[i] = cpus->regacc_read(cpu_id, i);
+        htp_push_regacc_read(rdframes, cpu_id, i);
+    }
+    cpus->process_frames(rdframes);
+    for(uint32_t i = 1; i < regnum; i++) {
+        context[i] = htp_pop_regacc_read(rdframes);
     }
     context[0] = nextpc;
 }
