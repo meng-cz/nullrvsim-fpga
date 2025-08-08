@@ -443,13 +443,14 @@ void SerialFPGAAdapter::process_frames(HTPFrames &frames) {
 void SerialFPGAAdapter::_perform_frames(vector<HTPFrame*> &frames, uint32_t send_sum, uint32_t recv_sum) {
     BufT sendbuf, recvbuf;
     sendbuf.reserve(send_sum);
-    recvbuf.assign(recv_sum, 0);
     for(auto p : frames) {
         _send_frame(sendbuf, *p);
     }
     _write_serial(sendbuf.data(), sendbuf.size());
-    _read_serial(recvbuf.data(), recvbuf.size());
     for(auto p : frames) {
+        uint32_t recv_cnt = ((SEROP_RET_BITS[(uint32_t)(p->opcode)]/8) + 1);
+        recvbuf.resize(recv_cnt);
+        _read_serial(recvbuf.data(), recvbuf.size());
         _recv_frame(recvbuf, *p);
     }
 }
