@@ -1,6 +1,10 @@
 # nullrvsim-fpga
 
-(Working in Progress)
+**(弃用，移动至 [https://github.com/meng-cz/fase-rv64] )**
+
+**(Deprecated, Move to [https://github.com/meng-cz/fase-rv64] )**
+
+**@2025.08.13**
 
 在FPGA上运行用户模式模拟
 
